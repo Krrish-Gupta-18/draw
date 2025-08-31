@@ -1,0 +1,19 @@
+import {z} from "zod";
+
+export const User = z.object({
+    name: z.string().optional(),
+    email: z.email(),
+    password: z.string(),
+    id: z.string().optional()
+});
+
+export const Doc = z.object({
+    id: z.string().optional(),
+    title: z.string(),
+    elements: z.json().optional(),
+    collaborators: z.array(z.string()).optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional()
+});
+
+export type UserType = z.infer<typeof User>;
