@@ -207,7 +207,7 @@ documentRouter.post("/update", authMiddleware, async (req: authRequest, res: Res
             return res.status(404).json({ msg: "Document not found" });
         }
 
-        if(existingDocument.ownerId !== user.id && !existingDocument.collaborators.some(collab => collab.id === user.id)) {
+        if(existingDocument.ownerId !== user.id && !existingDocument.collaborators.some((collab: { email:string }) => collab.email === user.email)) {
             return res.status(403).json({ msg: "Forbidden" });
         }
 
@@ -254,7 +254,7 @@ documentRouter.post("/:id/save", authMiddleware, async (req: authRequest, res: R
             return res.status(404).json({ msg: "Document not found" });
         }
 
-        if(existingDocument.ownerId !== user.id && !existingDocument.collaborators.some(collab => collab.id === user.id)) {
+        if(existingDocument.ownerId !== user.id && !existingDocument.collaborators.some((collab: { email:string }) => collab.email === user.email)) {
             return res.status(403).json({ msg: "Forbidden" });
         }
 

@@ -36,6 +36,15 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.1.12
+      '@types/estree':
+        specifier: ^1.0.8
+        version: 1.0.8
+      '@types/json-schema':
+        specifier: ^7.0.15
+        version: 7.0.15
+      '@types/json5':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@types/node':
         specifier: ^20
         version: 20.19.11
@@ -55,17 +64,23 @@ importers:
         specifier: ^4
         version: 4.1.12
       typescript:
-        specifier: ^5
+        specifier: ^5.8.3
         version: 5.8.3
 
   apps/http-server:
     dependencies:
+      '@types/cors':
+        specifier: ^2.8.19
+        version: 2.8.19
       '@types/express':
         specifier: ^5.0.3
         version: 5.0.3
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.5
       express:
         specifier: ^5.1.0
         version: 5.1.0
@@ -138,10 +153,10 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: ^6.13.0
-        version: 6.13.0(prisma@6.13.0(typescript@5.8.3))(typescript@5.8.3)
+        version: 6.13.0(prisma@6.13.0(typescript@5.9.2))(typescript@5.9.2)
       prisma:
         specifier: ^6.13.0
-        version: 6.13.0(typescript@5.8.3)
+        version: 6.13.0(typescript@5.9.2)
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*
@@ -654,6 +669,9 @@ packages:
   '@types/connect@3.4.38':
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
 
+  '@types/cors@2.8.19':
+    resolution: {integrity: sha512-mFNylyeyqN93lfe/9CSxOGREz8cpzAhH+E93xJ4xWQf62V8sQ/24reV2nyzUWM6H6Xji+GGHpkbLe7pVoUEskg==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -671,6 +689,10 @@ packages:
 
   '@types/json5@0.0.29':
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
+
+  '@types/json5@2.2.0':
+    resolution: {integrity: sha512-NrVug5woqbvNZ0WX+Gv4R+L4TGddtmFek2u8RtccAgFZWtS9QXF2xCXY22/M4nzkaKF0q9Fc6M/5rxLDhfwc/A==}
+    deprecated: This is a stub types definition. json5 provides its own type definitions, so you do not need this installed.
 
   '@types/jsonwebtoken@9.0.10':
     resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
@@ -1054,6 +1076,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cors@2.8.5:
+    resolution: {integrity: sha512-KIHbLJqu73RGr/hnbrO9uBeixNGuvSQjul/jdFvS/KFSIH1hWVd1ng7zOHx+YrEfInLG7q4n6GHQ9cDtxv/P6g==}
+    engines: {node: '>= 0.10'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2761,10 +2787,10 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
-  '@prisma/client@6.13.0(prisma@6.13.0(typescript@5.8.3))(typescript@5.8.3)':
+  '@prisma/client@6.13.0(prisma@6.13.0(typescript@5.9.2))(typescript@5.9.2)':
     optionalDependencies:
-      prisma: 6.13.0(typescript@5.8.3)
-      typescript: 5.8.3
+      prisma: 6.13.0(typescript@5.9.2)
+      typescript: 5.9.2
 
   '@prisma/config@6.13.0':
     dependencies:
@@ -2892,6 +2918,10 @@ snapshots:
     dependencies:
       '@types/node': 22.15.3
 
+  '@types/cors@2.8.19':
+    dependencies:
+      '@types/node': 22.15.3
+
   '@types/estree@1.0.8': {}
 
   '@types/express-serve-static-core@5.0.7':
@@ -2912,6 +2942,10 @@ snapshots:
   '@types/json-schema@7.0.15': {}
 
   '@types/json5@0.0.29': {}
+
+  '@types/json5@2.2.0':
+    dependencies:
+      json5: 1.0.2
 
   '@types/jsonwebtoken@9.0.10':
     dependencies:
@@ -3416,6 +3450,11 @@ snapshots:
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
+
+  cors@2.8.5:
+    dependencies:
+      object-assign: 4.1.1
+      vary: 1.1.2
 
   cross-spawn@7.0.6:
     dependencies:
@@ -4553,12 +4592,12 @@ snapshots:
 
   prettier@3.6.2: {}
 
-  prisma@6.13.0(typescript@5.8.3):
+  prisma@6.13.0(typescript@5.9.2):
     dependencies:
       '@prisma/config': 6.13.0
       '@prisma/engines': 6.13.0
     optionalDependencies:
-      typescript: 5.8.3
+      typescript: 5.9.2
     transitivePeerDependencies:
       - magicast
 
