@@ -38,7 +38,7 @@ documentRouter.post("/create", authMiddleware, async (req: authRequest, res: Res
 
         console.log(newDocument);
 
-        return res.json(`${newDocument.title} created successfully`);
+        return res.json({msg: `${newDocument.title} created successfully`});
 
     } catch (error) {
         console.log(error);
