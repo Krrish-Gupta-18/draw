@@ -17,3 +17,54 @@ export const Doc = z.object({
 });
 
 export type UserType = z.infer<typeof User>;
+
+export type Shape = {
+    id: number,
+    type: "rect",
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: string
+} | {
+    id: number,
+    type: "circle",
+    centerX: number,
+    centerY: number,
+    radius: number,
+    color: string
+} | {
+    id: number,
+    type: "line",
+    sx: number,
+    sy: number,
+    ex: number,
+    ey: number,
+    color: string
+} | {
+    id: number,
+    type: "ellipse",
+    centerX: number,
+    centerY: number,
+    rx: number,
+    ry: number,
+    color: string
+} | {
+    id: number,
+    type: "delete",
+    color?: string,
+    // selected?: boolean
+} | {
+    id: number,
+    type: "arrow",
+    sx: number,
+    sy: number,
+    ex: number,
+    ey: number,
+    color: string
+} | {
+    type: "freehand",
+    points: {x: number, y: number}[],
+    color: string
+    id: number,
+}
