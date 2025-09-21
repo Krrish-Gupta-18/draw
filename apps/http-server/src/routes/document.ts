@@ -29,7 +29,7 @@ documentRouter.post("/create", authMiddleware, async (req: authRequest, res: Res
             data: {
                 title: document.data.title,
                 ownerId: user.id!,
-                elements: document.data.elements || {},
+                elements: document.data.elements || [],
                 collaborators: {
                     connect: document.data.collaborators?.map((email: string) => ({ email })) || []
                 }

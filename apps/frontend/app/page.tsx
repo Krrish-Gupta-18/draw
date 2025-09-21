@@ -3,7 +3,6 @@ import { set } from "mongoose";
 import { useState } from "react";
 import { useEffect } from "react";
 import { Nav } from "../components/Nav";
-import { handleClientScriptLoad } from "next/script";
 import Loading from "../components/Loading";
 
 type Doc = {
@@ -27,11 +26,14 @@ export default function Home() {
     const fetchData = async () => {
       try {
         const user = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/user`, {
+          method: 'GET',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
         });
       
+        console.log(user);
+        
         const userData = await user.json();
         setUser(userData);
 

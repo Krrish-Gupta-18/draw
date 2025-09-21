@@ -1,25 +1,26 @@
-import { JwtPayload } from "jsonwebtoken";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
+// import { UserType } from "@repo/common/types";
+import { JWT_SECRET } from "@repo/backend-common/config"
+import { prismaClient as db } from "@repo/db/client";
 import jwt from "jsonwebtoken";
 
-const wss = new WebSocketServer({ port: 8000 });
+const wss = new WebSocketServer({ 
+    port: 8000,
+});
 
-const check = (url: string | undefined) => {
+const check = (token: string) => {
     try {
-        if(!url) return null;
-        const params = new URLSearchParams(url?.split("?")[1]);
-        const token = params.get("token");
-        const decode = jwt.verify(token as string, "");
+        const decode = jwt.verify(token as string, JWT_SECRET);
 
         if(typeof decode == "string") {
-            return null
+            return null;
         }
 
         if(!decode || !decode.userId) {
             return null;
         }
 
-        return decode.userId
+        return {id: decode.userId, name: decode.name, email: decode.email};
     } catch (err) {
         return null
     }
@@ -29,31 +30,142 @@ interface User {
     userId: string;
     name: string;
     ws: WebSocket
-    room: string
 }
 
-const users: User[] = [];
+const users: Set<User> = new Set();
+const userToRoom = new Map<string, string>();
+const rooms = new Map<string, {userAllowed:Set<string>, users:Map<string, User>}>();
 
-wss.on("connection", (ws, req) => {
+function heartBeat(ws: WebSocket) {
+    (ws as any).isAlive = true;
+}
+
+const broadcastToRoom = (userId: string, data: string) => {
+    if(!userId) return;
+    const roomId = userToRoom.get(userId);
+
+    if(!roomId) return;
+    const room = rooms.get(roomId);
+    const users = room?.users;
+
+    if(!users) return;
+    users.forEach((user: User) => {
+        if(user.userId === userId || user.ws.readyState !== WebSocket.OPEN ) return;
+        user?.ws.send(data);
+    });
+}
+
+wss.on("connection", async (ws, req) => {
+    ws.on("pong", () => {heartBeat(ws)});
+
     const url = req.url;
-    const userId = check(url)
 
-    if(!userId) {
+    if (!url) return;
+    const queryParams = new URLSearchParams(url.split('?')[1]);
+
+    const token = queryParams.get('token');
+    if (!token) return null;
+
+    const user = check(token);
+
+    if (user == null) {
         ws.close()
-        return
+        return null;
     }
 
-    ws.on("message", (data) => {
+    users.add({
+        userId: user.id,
+        ws,
+        name: user.name
+    })
+
+    ws.on("message", async (data) => {
         let payloadData;
-        if(typeof data !== "string") {
-            payloadData = JSON.parse(data.toString())
-        }
-        else {
-            payloadData = JSON.parse(data)
+        try {
+            payloadData = typeof data === "string" ? JSON.parse(data) : JSON.parse(data.toString());
+        } catch (err) {
+            ws.send(JSON.stringify({ type: "error", message: "Invalid JSON" }));
+            return;
         }
 
         if (payloadData.type == "join") {
-            
+            const room = rooms.get(payloadData.roomId)
+            if(!room) {
+                const roomRes = await db.document.findFirst({
+                    where: {
+                        id: payloadData.roomId
+                    },
+                    include: {
+                        collaborators: true
+                    }
+                });
+
+                if(!roomRes) {
+                    ws.send(JSON.stringify({ type: "error", message: "Room not found" }));
+                    return;
+                }
+
+                if(!roomRes.collaborators.some(userAllow => userAllow.email === user.email)) {
+                    ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
+                    return;
+                }
+
+                const collaborators = new Set(roomRes.collaborators.map(collab => collab.email));
+
+                rooms.set(roomRes?.id, { 
+                    userAllowed: collaborators,
+                    users: new Map([
+                        [user.id, {
+                            userId: user.id,
+                            name: user.name,
+                            ws: ws
+                        }]
+                    ])
+                });
+
+                userToRoom.set(user.id, roomRes.id);
+            }
+
+            else {
+                if (!room.userAllowed.has(user.email)) {
+                    ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
+                    return;
+                }
+
+                else {
+                    room.users.set(user.id, { userId: user.id, name: user.name, ws });
+                }
+            }
+
+            ws.send(JSON.stringify({ type: "joined" }));
         }
     })
+
+    ws.on("close", () => {
+        users.forEach(u => {
+        if (u.ws === ws) users.delete(u);
+        });
+
+        rooms.forEach(room => {
+            room.users.forEach(u => {
+                if (u.ws === ws) room.users.delete(u.userId);
+                broadcastToRoom(u.userId, `${u.name} got disconnected...`);
+            });
+        });
+    });
 })
+
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if((ws as any).isAlive == false) {
+            return ws.terminate();
+        }
+
+        (ws as any).isAlive = false;
+        ws.ping();
+    })
+}, 30000);
+
+wss.on("close", () => {
+    clearInterval(interval);
+});

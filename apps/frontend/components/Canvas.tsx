@@ -39,7 +39,6 @@ export default function Canvas({ roomId }: { roomId?: string }) {
         if (can.current) {
             setGame(new Board(can.current, 1, setZoom, roomId as string, elements));
             
-
             return () => {
                 game?.destroy();
             }
@@ -95,6 +94,12 @@ export default function Canvas({ roomId }: { roomId?: string }) {
                     <input className="nav-check" type="radio" name="shape" value="freehand" onChange={(e) => game?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.25"><path clipRule="evenodd" d="m7.643 15.69 7.774-7.773a2.357 2.357 0 1 0-3.334-3.334L4.31 12.357a3.333 3.333 0 0 0-.977 2.357v1.953h1.953c.884 0 1.732-.352 2.357-.977Z"></path><path d="m11.25 5.417 3.333 3.333"></path></g></svg>
+                </div>
+
+                <div id="text" className="btn">
+                    <input className="nav-check" type="radio" name="shape" value="text" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <span></span>
+                    <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" className="" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><line x1="4" y1="20" x2="7" y2="20"></line><line x1="14" y1="20" x2="21" y2="20"></line><line x1="6.9" y1="15" x2="13.8" y2="15"></line><line x1="10.2" y1="6.3" x2="16" y2="20"></line><polyline points="5 20 11 4 13 4 20 20"></polyline></g></svg>
                 </div>
 
                 <div className="w-[1px] h-[1.4rem] mt-[0.2rem] ml-0.5 mr-0.5 bg-gray-300"></div>

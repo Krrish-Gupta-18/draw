@@ -1,3 +1,4 @@
+import { text } from "node:stream/consumers"
 import { handelDebounce, handelSave } from "../utils/save"
 
 export type Shape = {
@@ -49,6 +50,16 @@ export type Shape = {
     points: {x: number, y: number}[],
     color: string
     id: number,
+} | {
+    type: "text",
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    text: string[],
+    fontSize: number,
+    color: string,
+    id: number,
 }
 
 export default class Board {
@@ -74,12 +85,16 @@ export default class Board {
     private setZoom: (num: number) => void;
     public selected: Shape | null = null;
     public roomId:string;
+    private input: HTMLDivElement | null = null;
+    private inputCoords: {x: number, y: number} = {x: 0, y: 0};
+    private txt: string[] | null = null;
 
     constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, elements?: {} | null) {
         this.isDrawingEnabled = false;
         this.ctx = (can).getContext("2d")!;
         this.can = can;
         this.ctx.lineWidth = lineWidth;
+        this.ctx.imageSmoothingEnabled = true
         this.lineWidth = lineWidth;
         this.setZoom = setZoom;
         this.can.width = window.innerWidth;
@@ -127,6 +142,71 @@ export default class Board {
         }
     }
 
+
+    handelText(e: PointerEvent, fontSize: number = 25) {
+        if(this.input) {
+            if(!this.txt) return;
+            console.log(this.inputCoords);
+            
+            this.addText(this.txt, this.inputCoords.x, this.inputCoords.y, fontSize, this.input.clientWidth, this.input.clientHeight);
+            document.body.removeChild(this.input);
+            this.input = null;
+            this.txt = null;
+            return;
+        }
+
+        const div = document.createElement("div");
+        div.contentEditable = "true";
+        div.style.position = "fixed";
+        div.style.top = `${e.clientY}px`;
+        div.style.left = `${e.clientX}px`;
+        div.style.fontSize = `${fontSize}px`;
+        div.style.fontFamily = "Arial, sans-serif";
+        div.style.color = this.color;
+        div.style.background = "transparent";
+        div.style.border = `2px solid ${this.color}`;
+        div.style.outline = "none";
+        div.style.zIndex = "1000";
+        div.style.minWidth = "20px";
+        div.style.height = `${fontSize}px`;
+        div.style.lineHeight = `${fontSize}px`;
+        div.style.whiteSpace = "pre";
+        div.style.overflow = "hidden";
+        div.style.padding = "2px";
+
+        this.input = div;
+        this.inputCoords = { x: this.startX, y: this.startY};
+        document.body.appendChild(div);
+        div.focus();
+
+        const autoResize = () => {
+            if (!this.input) return;
+            this.input.style.height = "auto";
+            this.input.style.height = this.input.scrollHeight + "px";
+            this.input.scrollTop = 0;
+            this.txt = this.input.innerText.split("\n");
+        };
+
+        this.input.addEventListener("input", autoResize);
+    }
+
+    addText(text: string[], x: number, y: number, fontSize: number = 20, width: number, height: number) {
+        if (!text) return;
+        const s: Shape = {
+            id: Date.now(),
+            type: "text",
+            x: x ? x : this.startX,
+            y: y ? y : this.startY,
+            width: width ? width : 200,
+            height: height ? height : fontSize + 10,
+            text: text,
+            fontSize: fontSize * 1.1,
+            color: this.color
+        }
+        this.shapes[++this.top] = s;
+        this.clearCanvas();
+    }
+
     setCurrShape(shape: string) {
         this.currShape = shape;
         if (!this.features.includes(this.currShape)) {
@@ -147,7 +227,6 @@ export default class Board {
         this.ctx.clearRect(0, 0, this.can.width, this.can.height);
         this.ctx.fillStyle = "rgba(255, 255, 255)";
         this.ctx.fillRect(0, 0, this.can.width, this.can.height);
-        this.ctx.lineWidth = this.lineWidth / this.viewportTransform.scale;
 
         this.ctx.setTransform(
             this.viewportTransform.scale,
@@ -166,6 +245,12 @@ export default class Board {
             if(ele.type == "delete") break;
             if(this.selected && this.selected.id == ele.id) {
                 this.ctx.strokeStyle = "blue";
+                if (ele.type == "text") {
+                    var err = 4*4;
+                    this.ctx.beginPath();
+                    this.ctx.rect(ele.x, ele.y, ele.width + err, ele.height + err);
+                    this.ctx.stroke();
+                }
             }
             else {
                 this.ctx.strokeStyle = ele.color;
@@ -209,6 +294,19 @@ export default class Board {
                         this.ctx.lineTo(ele.points[j].x, ele.points[j].y);
                     }
                     this.ctx.stroke();
+                    break;
+
+                case "text":
+                    if(ele.type != "text") break;
+                    const textEle = ele as Extract<Shape, {type: "text"}>;
+                    this.ctx.font = `${textEle.fontSize}px sans-serif`;
+                    this.ctx.fillStyle = textEle.color;
+                    this.ctx.textBaseline = "top";
+                    var err = 8;
+
+                    ele.text.forEach((t, idx) => {
+                        this.ctx.fillText(t, textEle.x + err, (textEle.y + err) + (ele.fontSize * (idx)));
+                    });
                     break;
             }
         }
@@ -362,6 +460,10 @@ export default class Board {
                         pt.y += y;
                     }
                     break;
+                case "text":
+                    this.selected.x += x;
+                    this.selected.y += y;
+                    break;
             }
 
             this.startX = ex;
@@ -432,6 +534,13 @@ export default class Board {
                             hover = true;
                             break;
                         }
+                    }
+                }
+
+                if(ele.type == "text") {
+                    if(x >= ele.x && x <= ele.x + ele.width && y >= ele.y && y <= ele.y + ele.height) {
+                        hover = true;
+                        break;
                     }
                 }
             };
@@ -527,6 +636,14 @@ export default class Board {
                         }
                     }
                 }
+
+                if (ele.type == "text") {
+                    if(x >= ele.x && x <= ele.x + ele.width && y >= ele.y && y <= ele.y + ele.height) {
+                        this.selected = ele;
+                        this.can.style.cursor = "move";
+                        break;
+                    }
+                }
             }
             
             if (this.selected) this.isDragging = true;
@@ -541,18 +658,26 @@ export default class Board {
         e.preventDefault();
         this.can.setPointerCapture(e.pointerId);
         
-        this.shapes.splice(this.top + 1, this.shapes.length - this.top - 1);
+        if(this.shapes) {
+            console.log(this.shapes)
+            this.shapes.splice(this.top + 1, this.shapes.length - this.top - 1);
+        }
 
         if(this.currShape == "freehand") {
             this.ctx.closePath();
             this.ctx.beginPath();
             this.top++;
         }
-
+        
         this.startX = x;
         this.startY = y;
-
+        
         this.isDrawing = true;
+
+        if(this.currShape == "text") {
+            this.handelText(e);
+            return;
+        }
     }
 
     mouseUp(e: PointerEvent) {
