@@ -11,17 +11,19 @@ const wss = new WebSocketServer({
 const check = (token: string) => {
     try {
         const decode = jwt.verify(token as string, JWT_SECRET);
-
+        
+        
         if(typeof decode == "string") {
             return null;
         }
-
-        if(!decode || !decode.userId) {
+        
+        if(!decode || !decode.id) {
             return null;
         }
-
-        return {id: decode.userId, name: decode.name, email: decode.email};
+        
+        return {id: decode.id, name: decode.name, email: decode.email};
     } catch (err) {
+        console.log(err);
         return null
     }
 }
@@ -57,15 +59,16 @@ const broadcastToRoom = (userId: string, data: string) => {
 
 wss.on("connection", async (ws, req) => {
     ws.on("pong", () => {heartBeat(ws)});
-
+    
     const url = req.url;
 
+    
     if (!url) return;
     const queryParams = new URLSearchParams(url.split('?')[1]);
-
+    
     const token = queryParams.get('token');
     if (!token) return null;
-
+    
     const user = check(token);
 
     if (user == null) {
@@ -78,9 +81,12 @@ wss.on("connection", async (ws, req) => {
         ws,
         name: user.name
     })
-
+    
+    console.log(`User ${user.name} connected`);
+    
     ws.on("message", async (data) => {
         let payloadData;
+        
         try {
             payloadData = typeof data === "string" ? JSON.parse(data) : JSON.parse(data.toString());
         } catch (err) {
@@ -105,7 +111,7 @@ wss.on("connection", async (ws, req) => {
                     return;
                 }
 
-                if(!roomRes.collaborators.some(userAllow => userAllow.email === user.email)) {
+                if((roomRes.collaborators.some(userAllow => userAllow.email === user.email)) || roomRes.ownerId != user.id) {
                     ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
                     return;
                 }
@@ -124,6 +130,10 @@ wss.on("connection", async (ws, req) => {
                 });
 
                 userToRoom.set(user.id, roomRes.id);
+
+                console.log(`User ${user.name} joined room ${roomRes.id}`);
+                
+                ws.send(JSON.stringify({ type: "joined" }));
             }
 
             else {
@@ -137,7 +147,10 @@ wss.on("connection", async (ws, req) => {
                 }
             }
 
-            ws.send(JSON.stringify({ type: "joined" }));
+        }
+
+        if (payloadData.type == "message") {
+            broadcastToRoom(user.id, JSON.stringify({ type: "message", message: payloadData.message, from: user.name }));
         }
     })
 
@@ -165,6 +178,10 @@ const interval = setInterval(() => {
         ws.ping();
     })
 }, 30000);
+
+wss.on("listening", () => {
+    console.log("WebSocket server started on port 8000");
+});
 
 wss.on("close", () => {
     clearInterval(interval);

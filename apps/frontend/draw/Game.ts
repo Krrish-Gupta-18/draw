@@ -88,9 +88,11 @@ export default class Board {
     private input: HTMLDivElement | null = null;
     private inputCoords: {x: number, y: number} = {x: 0, y: 0};
     private txt: string[] | null = null;
+    private socket: WebSocket | null = null;
 
-    constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, elements?: {} | null) {
+    constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, socket:WebSocket, elements?: {} | null) {
         this.isDrawingEnabled = false;
+        this.socket = socket;
         this.ctx = (can).getContext("2d")!;
         this.can = can;
         this.ctx.lineWidth = lineWidth;
@@ -302,10 +304,10 @@ export default class Board {
                     this.ctx.font = `${textEle.fontSize}px sans-serif`;
                     this.ctx.fillStyle = textEle.color;
                     this.ctx.textBaseline = "top";
-                    var err = 8;
+                    var err = 4*2;
 
                     ele.text.forEach((t, idx) => {
-                        this.ctx.fillText(t, textEle.x + err, (textEle.y + err) + (ele.fontSize * (idx)));
+                        this.ctx.fillText(t, textEle.x, (textEle.y + err) + (textEle.fontSize * (idx)));
                     });
                     break;
             }

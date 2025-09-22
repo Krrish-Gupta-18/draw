@@ -1,11 +1,11 @@
 "use client"
 
 import Board from "../draw/Game";
-import { useEffect, useRef, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import { Shape } from "../draw/Game";
 import { handelSave } from "../utils/save";
 
-export default function Canvas({ roomId }: { roomId?: string }) {
+export default function Canvas({ roomId, socket }: { roomId?: string, socket: WebSocket }) {
     const can = useRef<HTMLCanvasElement>(null)
     const [game, setGame] = useState<Board>();
     const [zoom, setZoom] = useState<number>(100);
@@ -37,13 +37,17 @@ export default function Canvas({ roomId }: { roomId?: string }) {
 
     useEffect(() => {
         if (can.current) {
-            setGame(new Board(can.current, 1, setZoom, roomId as string, elements));
+            setGame(new Board(can.current, 1, setZoom, roomId as string, socket, elements));
             
             return () => {
                 game?.destroy();
             }
         }
     }, [elements])
+
+    useEffect(() => {
+
+    }, [])
 
     return (
         <>
