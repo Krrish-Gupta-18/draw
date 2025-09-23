@@ -1,9 +1,9 @@
 "use client";
-import { set } from "mongoose";
 import { useState } from "react";
 import { useEffect } from "react";
 import { Nav } from "../components/Nav";
 import Loading from "../components/Loading";
+import { AuthProvider, useAuth } from "./context/useAuth";
 
 type Doc = {
   id: string;
@@ -12,8 +12,8 @@ type Doc = {
   collaborators: { name: string; email: string }[];
 };
 
-export default function Home() {
-  const [user, setUser] = useState<{ name:string } | null>(null);
+function Home() {
+  const {user, refetch} = useAuth();
   const [documents, setDocuments] = useState<Doc[] | ["Loading..."]>([]);
   const [isVisible, setIsVisible] = useState(false);
   const [text, setText] = useState("Create");
@@ -25,22 +25,6 @@ export default function Home() {
 
     const fetchData = async () => {
       try {
-        const user = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/user`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-      
-        console.log(user);
-        
-        const userData = await user.json();
-        setUser(userData);
-
-        if(!userData?.id) {
-          window.location.href = '/log-in';
-        }
-
         const document = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/document/all`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -49,8 +33,8 @@ export default function Home() {
       
         const documentData = await document.json();
         setDocuments(documentData);
-
-      } catch (err) {
+      }
+      catch (err) {
         console.log(err);
       }
     }
@@ -123,7 +107,6 @@ export default function Home() {
   const handelDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const target = e.target as HTMLElement;
-    // const docCard = target.closest("div");
     const i = parseInt(target.dataset.index as string);
     console.log(i, documents);
     
@@ -238,3 +221,11 @@ export default function Home() {
     </>
   );
 }
+
+const WrappedHome = () => (
+  <AuthProvider>
+    <Home />
+  </AuthProvider>
+);
+
+export default WrappedHome;

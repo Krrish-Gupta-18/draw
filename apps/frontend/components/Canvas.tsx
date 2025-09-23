@@ -4,9 +4,175 @@ import Board from "../draw/Game";
 import { use, useEffect, useRef, useState } from "react"
 import { Shape } from "../draw/Game";
 import { handelSave } from "../utils/save";
+import { useAuth } from "../app/context/useAuth";
+
+var dirty = false;
+
+// const CursorsLayer = ({ viewportTransform, canvas }: { viewportTransform: any, canvas: HTMLCanvasElement }) => {
+//     const { user, refetch } = useAuth();
+//     const cursorCanvasRef = useRef<HTMLCanvasElement>(null);
+//     const viewportRef = useRef(viewportTransform);
+
+//     console.log(viewportRef);
+    
+
+//     if (!user) return;
+    
+//     const cursorCanvas = document.createElement('canvas');
+//     document.body.appendChild(cursorCanvas);
+//     cursorCanvas.width = window.innerWidth;
+//     cursorCanvas.height = window.innerHeight;
+//     cursorCanvas.style.position = 'absolute';
+//     cursorCanvas.style.top = '0';
+//     cursorCanvas.style.left = '0';
+//     cursorCanvas.style.pointerEvents = 'none';
+//     cursorCanvas.style.zIndex = '1000';
+//     const cursorCtx = cursorCanvas.getContext('2d')!;
+    
+//     cursorCanvasRef.current = cursorCanvas;
+//     // Function to draw cursors
+//     function drawCursors(cursors: any) {
+//         if(!cursorCanvasRef.current) return;
+        
+//         cursorCtx.setTransform(1, 0, 0, 1, 0, 0);
+//         cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+//         // cursorCtx.fillStyle = "rgba(255, 255, 255)";
+
+//         cursorCtx.setTransform(
+//             viewportRef.current.scale,
+//             0,
+//             0,
+//             viewportRef.current.scale,
+//             viewportRef.current.x,
+//             viewportRef.current.y
+//         )
+
+//         cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height); // clear previous frame
+//         Object.keys(cursors).forEach(id => {
+//             const cursor = cursors[id];
+//             let rect = canvas.getBoundingClientRect();
+//             let x = (cursor.x - rect.left - viewportTransform.x) / viewportTransform.scale;
+//             let y = (cursor.y - rect.top - viewportTransform.y) / viewportTransform.scale;
+
+//             if (cursor) {
+//                 cursorCtx.beginPath();
+//                 cursorCtx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
+//                 cursorCtx.fillStyle = cursor.color || 'red';
+//                 cursorCtx.fill();
+//                 cursorCtx.font = '12px Arial';
+//                 cursorCtx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y - 8);
+//             }
+//         });
+
+//     }
+    
+//     useEffect(() => {
+//         viewportRef.current = viewportTransform;
+//         console.log(viewportTransform);
+//     }, [viewportTransform]);
+
+//     // The render loop
+//     function render() {
+//         if (!dirty) {
+//             // nothing changed → skip expensive work
+//             requestAnimationFrame(render);
+//             return;
+//         }
+    
+//         // Redraw cursors only if dirty
+//         drawCursors(cursors);
+    
+//         dirty = false; // reset flag until next change
+//         requestAnimationFrame(render);
+//     }
+    
+//     render();
+
+//     return null;
+// };
+
+const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, cursors: any }) => {
+    const { user } = useAuth();
+    const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const viewportRef = useRef(viewportTransform);
+
+    useEffect(() => {
+        if (!user) return;
+
+        // Create canvas only once
+        const cursorCanvas = document.createElement('canvas');
+        cursorCanvas.width = window.innerWidth;
+        cursorCanvas.height = window.innerHeight;
+        cursorCanvas.style.position = 'absolute';
+        cursorCanvas.style.top = '0';
+        cursorCanvas.style.left = '0';
+        cursorCanvas.style.pointerEvents = 'none';
+        cursorCanvas.style.zIndex = '1000';
+        document.body.appendChild(cursorCanvas);
+
+        cursorCanvasRef.current = cursorCanvas;
+        const ctx = cursorCanvas.getContext('2d')!;
+
+        // Animation loop
+        let animationFrameId: number;
+        const renderLoop = () => {
+            if (!cursorCanvasRef.current) return;
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+
+            ctx.setTransform(
+                viewportRef.current.scale,
+                0,
+                0,
+                viewportRef.current.scale,
+                viewportRef.current.x,
+                viewportRef.current.y
+            );
+
+            // draw cursors here using latest viewportRef.current
+            Object.keys(cursors).forEach(id => {
+                const cursor = cursors[id];
+                if (!cursor) return;
+                ctx.beginPath();
+                ctx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = cursor.color || 'red';
+                ctx.fill();
+                ctx.font = '12px Arial';
+                ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y - 8);
+            });
+
+            animationFrameId = requestAnimationFrame(renderLoop);
+        };
+
+        renderLoop();
+
+        const handleResize = () => {
+            cursorCanvas.width = window.innerWidth;
+            cursorCanvas.height = window.innerHeight;
+        };
+
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            window.removeEventListener('resize', handleResize);
+            document.body.removeChild(cursorCanvas);
+        };
+    }, [user]);
+
+    // keep viewportRef updated
+    useEffect(() => {
+        viewportRef.current = viewportTransform;
+    }, [viewportTransform]);
+
+    return null;
+};
+
 
 export default function Canvas({ roomId, socket }: { roomId?: string, socket: WebSocket }) {
-    const can = useRef<HTMLCanvasElement>(null)
+    const can = useRef<HTMLCanvasElement>(null);
+    const cursors = useRef<{[id: string]:{ color?: string; name?: string; x: number; y: number;}}>({});
     const [game, setGame] = useState<Board>();
     const [zoom, setZoom] = useState<number>(100);
     const [elements, setElements] = useState<Shape[] | null>(null);
@@ -26,7 +192,6 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             const elementsData = await elements.json();
             
             if(elementsData) {
-                // window.location.href = '/';
                 setElements(elementsData.elements as Shape[] || null);
             }
         }
@@ -46,11 +211,25 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     }, [elements])
 
     useEffect(() => {
-
+        socket.onmessage = (message) => {
+            const data = JSON.parse(message.data);
+            
+            if (data.type === 'mousePos') {
+                dirty = true;
+                
+                cursors.current[data.id] = {
+                    x: data.x,
+                    y: data.y,
+                    color: data.color,
+                    name: data.name
+                }
+            }
+        }
     }, [])
 
     return (
         <>
+            {game && <CursorsLayer viewportTransform={game?.viewportTransform} cursors={cursors.current!}/>}
             <div className="fixed left-[50%] z-100 flex rounded-2xl shadow-(--shadow-island) translate-x-[-50%] mt-[20px] p-[10px] bg-[white]">
                 <div id="move" className="btn">
                     <input className="nav-check" type="radio" name="shape" value="move" onChange={(e) => game?.setCurrShape(e.target.value)}/>

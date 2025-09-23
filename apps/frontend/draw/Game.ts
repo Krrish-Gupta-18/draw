@@ -89,6 +89,7 @@ export default class Board {
     private inputCoords: {x: number, y: number} = {x: 0, y: 0};
     private txt: string[] | null = null;
     private socket: WebSocket | null = null;
+    private lastSend: number = 0;
 
     constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, socket:WebSocket, elements?: {} | null) {
         this.isDrawingEnabled = false;
@@ -346,6 +347,12 @@ export default class Board {
         let rect = this.can.getBoundingClientRect();
         let x = (e.clientX - rect.left - this.viewportTransform.x) / this.viewportTransform.scale;
         let y = (e.clientY - rect.top - this.viewportTransform.y) / this.viewportTransform.scale;
+
+        const now = performance.now();
+        const throttle = 30;
+        
+        if(this.socket?.readyState == this.socket?.OPEN && now - this.lastSend < throttle) this.socket?.send(JSON.stringify({ type: "mousePos", x, y, color: this.color, roomId: this.roomId}));
+        this.lastSend = now;
 
         if (this.isMoving) {
             this.can.style.cursor = "grabbing";

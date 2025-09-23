@@ -1,17 +1,15 @@
 import { WebSocketServer, WebSocket } from "ws";
-// import { UserType } from "@repo/common/types";
 import { JWT_SECRET } from "@repo/backend-common/config"
 import { prismaClient as db } from "@repo/db/client";
 import jwt from "jsonwebtoken";
+import http from "http";
 
-const wss = new WebSocketServer({ 
-    port: 8000,
-});
+const wss = new WebSocketServer({ noServer: true });
+const server = http.createServer();
 
 const check = (token: string) => {
     try {
         const decode = jwt.verify(token as string, JWT_SECRET);
-        
         
         if(typeof decode == "string") {
             return null;
@@ -35,22 +33,24 @@ interface User {
 }
 
 const users: Set<User> = new Set();
-const userToRoom = new Map<string, string>();
+const userToRoom = new Map<string, [string]>();
 const rooms = new Map<string, {userAllowed:Set<string>, users:Map<string, User>}>();
 
 function heartBeat(ws: WebSocket) {
     (ws as any).isAlive = true;
 }
 
-const broadcastToRoom = (userId: string, data: string) => {
+const broadcastToRoom = (userId: string, data: string, roomId: string) => {
     if(!userId) return;
-    const roomId = userToRoom.get(userId);
-
-    if(!roomId) return;
     const room = rooms.get(roomId);
+
+    if(!room) return;
     const users = room?.users;
 
     if(!users) return;
+    if(!users.get(userId)) return;
+    // console.log(userId);
+    
     users.forEach((user: User) => {
         if(user.userId === userId || user.ws.readyState !== WebSocket.OPEN ) return;
         user?.ws.send(data);
@@ -95,7 +95,9 @@ wss.on("connection", async (ws, req) => {
         }
 
         if (payloadData.type == "join") {
-            const room = rooms.get(payloadData.roomId)
+            const room = rooms.get(payloadData.roomId);
+            // console.log(room);
+            
             if(!room) {
                 const roomRes = await db.document.findFirst({
                     where: {
@@ -110,15 +112,18 @@ wss.on("connection", async (ws, req) => {
                     ws.send(JSON.stringify({ type: "error", message: "Room not found" }));
                     return;
                 }
+                
 
-                if((roomRes.collaborators.some(userAllow => userAllow.email === user.email)) || roomRes.ownerId != user.id) {
+                if(!(roomRes.collaborators.some(userAllow => userAllow.email === user.email)) && roomRes.ownerId != user.id) {
                     ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
+                    console.log(`User ${user.name} not allowed in room ${roomRes.id}`);
                     return;
                 }
 
                 const collaborators = new Set(roomRes.collaborators.map(collab => collab.email));
+                collaborators.add((await db.user.findUnique({ where: { id: roomRes?.ownerId } }))?.email!);
 
-                rooms.set(roomRes?.id, { 
+                rooms.set(roomRes?.id, {
                     userAllowed: collaborators,
                     users: new Map([
                         [user.id, {
@@ -129,7 +134,10 @@ wss.on("connection", async (ws, req) => {
                     ])
                 });
 
-                userToRoom.set(user.id, roomRes.id);
+                var prevRooms = userToRoom.get(user.id);
+                if(prevRooms) prevRooms!.push(payloadData.id);
+                else prevRooms = [payloadData.id];
+                userToRoom.set(user.id, prevRooms!);
 
                 console.log(`User ${user.name} joined room ${roomRes.id}`);
                 
@@ -137,6 +145,8 @@ wss.on("connection", async (ws, req) => {
             }
 
             else {
+                console.log(room.userAllowed, user.email, room.userAllowed.has(user.email));
+                
                 if (!room.userAllowed.has(user.email)) {
                     ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
                     return;
@@ -144,13 +154,18 @@ wss.on("connection", async (ws, req) => {
 
                 else {
                     room.users.set(user.id, { userId: user.id, name: user.name, ws });
+                    var prevRooms = userToRoom.get(user.id);
+                    if(prevRooms) prevRooms!.push(payloadData.id);
+                    else prevRooms = [payloadData.id];
+                    userToRoom.set(user.id, prevRooms!);
+                    ws.send(JSON.stringify({ type: "joined" }));
                 }
             }
-
         }
 
-        if (payloadData.type == "message") {
-            broadcastToRoom(user.id, JSON.stringify({ type: "message", message: payloadData.message, from: user.name }));
+        if (payloadData.type == "mousePos") {
+            // console.log(user.name, userToRoom.get(user.id));
+            broadcastToRoom(user.id, JSON.stringify({ type: "mousePos", x: payloadData.x, y: payloadData.y, color: payloadData.color, id: user.id , name: user.name }), payloadData.roomId);
         }
     })
 
@@ -162,7 +177,11 @@ wss.on("connection", async (ws, req) => {
         rooms.forEach(room => {
             room.users.forEach(u => {
                 if (u.ws === ws) room.users.delete(u.userId);
-                broadcastToRoom(u.userId, `${u.name} got disconnected...`);
+                userToRoom.get(u.userId)?.forEach(rId => {
+                    broadcastToRoom(u.userId, JSON.stringify({ type: "mousePosRemove", id: u.userId }), rId);
+                }
+                );
+                userToRoom.delete(u.userId);
             });
         });
     });
@@ -179,10 +198,21 @@ const interval = setInterval(() => {
     })
 }, 30000);
 
-wss.on("listening", () => {
-    console.log("WebSocket server started on port 8000");
+server.on("upgrade", (request, socket, head) => {
+  const origin = request.headers.origin;
+  const allowedOrigins = ["http://localhost:3000", "http://192.168.1.39:3000"];
+
+  if (!allowedOrigins.includes(origin || "")) {
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit("connection", ws, request);
+  });
 });
 
-wss.on("close", () => {
-    clearInterval(interval);
+server.listen(8000, () => {
+  console.log("Server listening on port 8000");
 });
