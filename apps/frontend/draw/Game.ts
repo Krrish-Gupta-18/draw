@@ -62,6 +62,13 @@ export type Shape = {
     id: number,
 }
 
+function getRandomColorHSL() {
+  const h = Math.floor(Math.random() * 360); // Hue: 0–360
+  const s = Math.floor(Math.random() * 100); // Saturation: 0–100%
+  const l = Math.floor(Math.random() * 100); // Lightness: 0–100%
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
 export default class Board {
     private ctx: CanvasRenderingContext2D;
     private can;
@@ -103,6 +110,7 @@ export default class Board {
         this.can.width = window.innerWidth;
         this.can.height = window.innerHeight;
         this.roomId = roomId;
+        if(!localStorage.getItem("cursorColor")) localStorage.setItem("cursorColor", getRandomColorHSL());
         this.init();
         this.initHandler();
         if(elements) {
@@ -343,6 +351,15 @@ export default class Board {
         return top || bottom || left || right;
     }
 
+    moveShape(shape: Shape) {
+        const a = this.shapes.findIndex((s) => s.id == shape.id)
+        if (a == -1) return;
+        
+        this.shapes[a] = shape;
+
+        this.clearCanvas();
+    }
+
     mouseMove(e: PointerEvent) {
         let rect = this.can.getBoundingClientRect();
         let x = (e.clientX - rect.left - this.viewportTransform.x) / this.viewportTransform.scale;
@@ -351,9 +368,10 @@ export default class Board {
         const now = performance.now();
         const throttle = 30;
         
-        if(this.socket?.readyState == this.socket?.OPEN && now - this.lastSend < throttle) this.socket?.send(JSON.stringify({ type: "mousePos", x, y, color: this.color, roomId: this.roomId}));
-        this.lastSend = now;
-
+        if(this.socket?.readyState == this.socket?.OPEN && now - this.lastSend >= throttle) {
+            this.socket?.send(JSON.stringify({ type: "mousePos", x, y, color: localStorage.getItem("cursorColor"), roomId: this.roomId}));
+        }
+        
         if (this.isMoving) {
             this.can.style.cursor = "grabbing";
 
@@ -362,10 +380,13 @@ export default class Board {
             this.startX = e.clientX;
             this.startY = e.clientY;
             
+            this.lastSend = now;
+
             this.clearCanvas();
             return;
         }
-
+        
+        
         if (this.isDrawing) {
             this.clearCanvas();
             this.ctx.beginPath();
@@ -431,8 +452,12 @@ export default class Board {
             let ey = (e.clientY - rect.top - this.viewportTransform.y) / this.viewportTransform.scale;
             if(!this.selected) return;
 
+            this.socket?.send(JSON.stringify({ type: "moveShapes", shapes: [this.selected], ex, ey, roomId: this.roomId}))
+            this.lastSend = performance.now();
+
             let x = ex - this.startX;
             let y = ey - this.startY;
+
 
             switch (this.selected.type) {
                 case "rect":

@@ -33,6 +33,7 @@ export default function Doc() {
     }, [])
    
     if (!socket) {
+        console.log(socket);
         return <Loading/>
     }
 

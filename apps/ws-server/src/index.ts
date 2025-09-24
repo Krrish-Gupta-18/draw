@@ -167,6 +167,11 @@ wss.on("connection", async (ws, req) => {
             // console.log(user.name, userToRoom.get(user.id));
             broadcastToRoom(user.id, JSON.stringify({ type: "mousePos", x: payloadData.x, y: payloadData.y, color: payloadData.color, id: user.id , name: user.name }), payloadData.roomId);
         }
+
+        if (payloadData.type == "moveShapes") {
+            // console.log(payloadData);
+            broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
+        }
     })
 
     ws.on("close", () => {

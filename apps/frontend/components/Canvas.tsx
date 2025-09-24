@@ -1,7 +1,7 @@
 "use client"
 
 import Board from "../draw/Game";
-import { use, useEffect, useRef, useState } from "react"
+import { use, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Shape } from "../draw/Game";
 import { handelSave } from "../utils/save";
 import { useAuth } from "../app/context/useAuth";
@@ -91,6 +91,23 @@ var dirty = false;
 //     return null;
 // };
 
+const cursorImages: Record<string, HTMLImageElement> = {};
+
+async function getCursorImage(id: string, color: string) {
+  
+    if (cursorImages[id]) {
+        return cursorImages[id];
+    }
+    // const data = await fetch(`${process.env.NEXT_PUBLIC_FRONTEND_URL}/api/cursor?=${color}`).then(res => res.json());
+
+    const url = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/api/cursor?=${color}`;
+
+    cursorImages[id] = new Image();
+    cursorImages[id].src = url;
+
+    return cursorImages[id];
+}
+
 const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, cursors: any }) => {
     const { user } = useAuth();
     const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -131,15 +148,15 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, 
             );
 
             // draw cursors here using latest viewportRef.current
-            Object.keys(cursors).forEach(id => {
+            Object.keys(cursors).forEach(async (id) => {
                 const cursor = cursors[id];
                 if (!cursor) return;
                 ctx.beginPath();
-                ctx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
-                ctx.fillStyle = cursor.color || 'red';
+                var img = await getCursorImage(id, cursor.color);
+                ctx.drawImage(img, cursor.x, cursor.y);
                 ctx.fill();
                 ctx.font = '12px Arial';
-                ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y - 8);
+                ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y + 35);
             });
 
             animationFrameId = requestAnimationFrame(renderLoop);
@@ -199,7 +216,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
         fetchData();
 
     }, []);
-
+    
     useEffect(() => {
         if (can.current) {
             setGame(new Board(can.current, 1, setZoom, roomId as string, socket, elements));
@@ -223,9 +240,18 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                     color: data.color,
                     name: data.name
                 }
+                // console.log(data.color);
+            }
+
+            if(data.type == "moveShapes") {
+                if(!game) return;
+                for (let i = 0; i < data.shapes.length; i++) {
+                    const shape = data.shapes[i];
+                    game.moveShape(shape);
+                }
             }
         }
-    }, [])
+    }, [game]) // Add game as dependency
 
     return (
         <>
