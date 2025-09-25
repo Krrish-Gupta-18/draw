@@ -8,14 +8,20 @@ export type Shape = {
     y: number,
     width: number,
     height: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "circle",
     centerX: number,
     centerY: number,
     radius: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "line",
@@ -23,7 +29,9 @@ export type Shape = {
     sy: number,
     ex: number,
     ey: number,
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "ellipse",
@@ -31,7 +39,10 @@ export type Shape = {
     centerY: number,
     rx: number,
     ry: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "delete",
@@ -44,11 +55,15 @@ export type Shape = {
     sy: number,
     ex: number,
     ey: number,
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     type: "freehand",
     points: {x: number, y: number}[],
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number,
     id: number,
 } | {
     type: "text",
@@ -59,6 +74,8 @@ export type Shape = {
     text: string[],
     fontSize: number,
     color: string,
+    strokeWidth?: number,
+    opacity?: number,
     id: number,
 }
 
@@ -97,6 +114,7 @@ export default class Board {
     private txt: string[] | null = null;
     private socket: WebSocket | null = null;
     private lastSend: number = 0;
+    private propertyChangeCallback: ((shape: Shape | null) => void) | null = null;
 
     constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, socket:WebSocket, elements?: {} | null) {
         this.isDrawingEnabled = false;
@@ -232,6 +250,35 @@ export default class Board {
         }
     }
 
+    setPropertyChangeCallback(callback: (shape: Shape | null) => void) {
+        this.propertyChangeCallback = callback;
+    }
+
+    updateShapeProperties(shapeId: number, properties: {[key: string]: any}) {
+        const shapeIndex = this.shapes.findIndex(s => s.id === shapeId);
+        if (shapeIndex === -1) return;
+
+        const currentShape = this.shapes[shapeIndex];
+        const updatedShape = { ...currentShape, ...properties } as Shape;
+        this.shapes[shapeIndex] = updatedShape;
+        
+        // Broadcast the property change to other users
+        if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ 
+                type: "updateProperties", 
+                shape: updatedShape, 
+                roomId: this.roomId 
+            }));
+        }
+        
+        this.clearCanvas();
+        return updatedShape;
+    }
+
+    getSelectedShape(): Shape | null {
+        return this.selected;
+    }
+
     clearCanvas() {
         
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -256,6 +303,7 @@ export default class Board {
             if(ele.type == "delete") break;
             if(this.selected && this.selected.id == ele.id) {
                 this.ctx.strokeStyle = "blue";
+                this.ctx.lineWidth = (ele.strokeWidth || this.lineWidth) + 1;
                 if (ele.type == "text") {
                     var err = 4*4;
                     this.ctx.beginPath();
@@ -265,18 +313,34 @@ export default class Board {
             }
             else {
                 this.ctx.strokeStyle = ele.color;
+                this.ctx.lineWidth = ele.strokeWidth || this.lineWidth;
+            }
+
+            // Set opacity if defined
+            if (ele.opacity !== undefined) {
+                this.ctx.globalAlpha = ele.opacity;
+            } else {
+                this.ctx.globalAlpha = 1;
             }
 
             switch (ele.type) {
                 case "rect":
                     this.ctx.beginPath();
                     this.ctx.rect(ele.x, ele.y, ele.width, ele.height);
+                    if (ele.fillColor) {
+                        this.ctx.fillStyle = ele.fillColor;
+                        this.ctx.fill();
+                    }
                     this.ctx.stroke();
                     break;
             
                 case "circle":
                     this.ctx.beginPath();
                     this.ctx.arc(ele.centerX, ele.centerY, ele.radius, 0, 2*Math.PI);
+                    if (ele.fillColor) {
+                        this.ctx.fillStyle = ele.fillColor;
+                        this.ctx.fill();
+                    }
                     this.ctx.stroke();
                     this.ctx.closePath();
                     break;
@@ -291,6 +355,10 @@ export default class Board {
                 case "ellipse":
                     this.ctx.beginPath();
                     this.ctx.ellipse(ele.centerX, ele.centerY, ele.rx, ele.ry, 0, 0, 2 * Math.PI);
+                    if (ele.fillColor) {
+                        this.ctx.fillStyle = ele.fillColor;
+                        this.ctx.fill();
+                    }
                     this.ctx.stroke();
                     break;
 
@@ -358,6 +426,27 @@ export default class Board {
         this.shapes[a] = shape;
 
         this.clearCanvas();
+    }
+
+    addShape(shape: Shape) { 
+        this.shapes.splice(++this.top, this.shapes.length - this.top, shape);
+        this.clearCanvas();
+    }
+
+    updateShapeFromRemote(shape: Shape) {
+        const shapeIndex = this.shapes.findIndex(s => s.id === shape.id);
+        if (shapeIndex !== -1) {
+            this.shapes[shapeIndex] = shape;
+            this.clearCanvas();
+            
+            // Update property panel if this shape is selected
+            if (this.selected && this.selected.id === shape.id) {
+                this.selected = shape;
+                if (this.propertyChangeCallback) {
+                    this.propertyChangeCallback(shape);
+                }
+            }
+        }
     }
 
     mouseMove(e: PointerEvent) {
@@ -606,6 +695,9 @@ export default class Board {
                 this.selected.color = this.color;
                 this.selected = null;
                 this.can.style.cursor = "crosshair";
+                if (this.propertyChangeCallback) {
+                    this.propertyChangeCallback(null);
+                }
             }
     
             for (let i = this.top; i >= 0; i--) {
@@ -682,6 +774,11 @@ export default class Board {
             
             if (this.selected) this.isDragging = true;
             else this.isDragging = false;   
+            
+            // Notify property panel about selection change
+            if (this.propertyChangeCallback) {
+                this.propertyChangeCallback(this.selected);
+            }
             
             this.clearCanvas();
             return;
@@ -802,7 +899,10 @@ export default class Board {
                     }
                     break;
             }
-            if(s && this.currShape != "freehand") this.shapes.splice(++this.top, this.shapes.length - this.top, s);
+            if(s && this.currShape != "freehand") {
+                console.log(this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId})))
+                this.shapes.splice(++this.top, this.shapes.length - this.top, s);
+            }
             this.clearCanvas();
             this.isDrawing = false;
         };

@@ -145,7 +145,7 @@ wss.on("connection", async (ws, req) => {
             }
 
             else {
-                console.log(room.userAllowed, user.email, room.userAllowed.has(user.email));
+                // console.log(room.userAllowed, user.email, room.userAllowed.has(user.email));
                 
                 if (!room.userAllowed.has(user.email)) {
                     ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
@@ -170,6 +170,16 @@ wss.on("connection", async (ws, req) => {
 
         if (payloadData.type == "moveShapes") {
             // console.log(payloadData);
+            broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
+        }
+
+        if (payloadData.type == "addShape") {
+            console.log(payloadData);
+            broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
+        }
+
+        if (payloadData.type == "updateProperties") {
+            console.log("Property update:", payloadData);
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
         }
     })

@@ -25,14 +25,20 @@ export type Shape = {
     y: number,
     width: number,
     height: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "circle",
     centerX: number,
     centerY: number,
     radius: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "line",
@@ -40,7 +46,9 @@ export type Shape = {
     sy: number,
     ex: number,
     ey: number,
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "ellipse",
@@ -48,7 +56,10 @@ export type Shape = {
     centerY: number,
     rx: number,
     ry: number,
-    color: string
+    color: string,
+    fillColor?: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     id: number,
     type: "delete",
@@ -61,10 +72,26 @@ export type Shape = {
     sy: number,
     ex: number,
     ey: number,
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number
 } | {
     type: "freehand",
     points: {x: number, y: number}[],
-    color: string
+    color: string,
+    strokeWidth?: number,
+    opacity?: number,
+    id: number,
+} | {
+    type: "text",
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    text: string[],
+    fontSize: number,
+    color: string,
+    strokeWidth?: number,
+    opacity?: number,
     id: number,
 }

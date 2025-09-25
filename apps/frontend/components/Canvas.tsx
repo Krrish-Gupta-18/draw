@@ -5,91 +5,9 @@ import { use, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Shape } from "../draw/Game";
 import { handelSave } from "../utils/save";
 import { useAuth } from "../app/context/useAuth";
+import PropertyPanel from "./PropertyPanel";
 
 var dirty = false;
-
-// const CursorsLayer = ({ viewportTransform, canvas }: { viewportTransform: any, canvas: HTMLCanvasElement }) => {
-//     const { user, refetch } = useAuth();
-//     const cursorCanvasRef = useRef<HTMLCanvasElement>(null);
-//     const viewportRef = useRef(viewportTransform);
-
-//     console.log(viewportRef);
-    
-
-//     if (!user) return;
-    
-//     const cursorCanvas = document.createElement('canvas');
-//     document.body.appendChild(cursorCanvas);
-//     cursorCanvas.width = window.innerWidth;
-//     cursorCanvas.height = window.innerHeight;
-//     cursorCanvas.style.position = 'absolute';
-//     cursorCanvas.style.top = '0';
-//     cursorCanvas.style.left = '0';
-//     cursorCanvas.style.pointerEvents = 'none';
-//     cursorCanvas.style.zIndex = '1000';
-//     const cursorCtx = cursorCanvas.getContext('2d')!;
-    
-//     cursorCanvasRef.current = cursorCanvas;
-//     // Function to draw cursors
-//     function drawCursors(cursors: any) {
-//         if(!cursorCanvasRef.current) return;
-        
-//         cursorCtx.setTransform(1, 0, 0, 1, 0, 0);
-//         cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
-//         // cursorCtx.fillStyle = "rgba(255, 255, 255)";
-
-//         cursorCtx.setTransform(
-//             viewportRef.current.scale,
-//             0,
-//             0,
-//             viewportRef.current.scale,
-//             viewportRef.current.x,
-//             viewportRef.current.y
-//         )
-
-//         cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height); // clear previous frame
-//         Object.keys(cursors).forEach(id => {
-//             const cursor = cursors[id];
-//             let rect = canvas.getBoundingClientRect();
-//             let x = (cursor.x - rect.left - viewportTransform.x) / viewportTransform.scale;
-//             let y = (cursor.y - rect.top - viewportTransform.y) / viewportTransform.scale;
-
-//             if (cursor) {
-//                 cursorCtx.beginPath();
-//                 cursorCtx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
-//                 cursorCtx.fillStyle = cursor.color || 'red';
-//                 cursorCtx.fill();
-//                 cursorCtx.font = '12px Arial';
-//                 cursorCtx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y - 8);
-//             }
-//         });
-
-//     }
-    
-//     useEffect(() => {
-//         viewportRef.current = viewportTransform;
-//         console.log(viewportTransform);
-//     }, [viewportTransform]);
-
-//     // The render loop
-//     function render() {
-//         if (!dirty) {
-//             // nothing changed → skip expensive work
-//             requestAnimationFrame(render);
-//             return;
-//         }
-    
-//         // Redraw cursors only if dirty
-//         drawCursors(cursors);
-    
-//         dirty = false; // reset flag until next change
-//         requestAnimationFrame(render);
-//     }
-    
-//     render();
-
-//     return null;
-// };
 
 const cursorImages: Record<string, HTMLImageElement> = {};
 
@@ -193,6 +111,8 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     const [game, setGame] = useState<Board>();
     const [zoom, setZoom] = useState<number>(100);
     const [elements, setElements] = useState<Shape[] | null>(null);
+    const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
+    const [showPropertyPanel, setShowPropertyPanel] = useState(false);
 
     useEffect(() => {
         if(!localStorage.getItem('token')) {
@@ -219,10 +139,16 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     
     useEffect(() => {
         if (can.current) {
-            setGame(new Board(can.current, 1, setZoom, roomId as string, socket, elements));
+            const newGame = new Board(can.current, 1, setZoom, roomId as string, socket, elements);
+            
+            newGame.setPropertyChangeCallback((shape: Shape | null) => {
+                setSelectedShape(shape);
+            });
+            
+            setGame(newGame);
             
             return () => {
-                game?.destroy();
+                newGame?.destroy();
             }
         }
     }, [elements])
@@ -250,12 +176,34 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                     game.moveShape(shape);
                 }
             }
+
+            if(data.type == "addShape") {
+                console.log(data.shape);
+                
+                game?.addShape(data.shape);
+            }
+
+            if(data.type == "updateProperties") {
+                console.log("Received property update:", data.shape);
+                
+                game?.updateShapeFromRemote(data.shape);
+            }
         }
     }, [game]) // Add game as dependency
+
+    const handlePropertyChange = (shapeId: number, properties: {[key: string]: any}) => {
+        if (game) {
+            game.updateShapeProperties(shapeId, properties);
+        }
+    };
 
     return (
         <>
             {game && <CursorsLayer viewportTransform={game?.viewportTransform} cursors={cursors.current!}/>}
+            {showPropertyPanel && <PropertyPanel 
+                selectedShape={selectedShape} 
+                onPropertyChange={handlePropertyChange}
+            />}
             <div className="fixed left-[50%] z-100 flex rounded-2xl shadow-(--shadow-island) translate-x-[-50%] mt-[20px] p-[10px] bg-[white]">
                 <div id="move" className="btn">
                     <input className="nav-check" type="radio" name="shape" value="move" onChange={(e) => game?.setCurrShape(e.target.value)}/>
@@ -340,7 +288,15 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                     <div id="redo" className="btn" onClick={e => game?.redo()}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M12.5 10.833 15.833 7.5 12.5 4.167M15.833 7.5H6.667a3.333 3.333 0 1 0 0 6.667H7.5" strokeWidth="1.25"></path></svg>
                     </div>
-                </div>         
+
+                </div>
+
+                <div className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) ml-[10px] p-[5px]">
+                    <button className="btn " onClick={e => setShowPropertyPanel(prev => !prev)}>
+                        <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" className="" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M5.833 5.833h8.334v8.334H5.833z"></path><path strokeWidth="1.25" d="M10 10.833v3.333"></path><path strokeWidth="1.25"/></svg>
+                    </button>
+                </div>
+
             </div>
 
             <div className="w-[100vw] h-[100vh]">
