@@ -9,7 +9,7 @@ export interface authRequest extends Request {
 
 export const authMiddleware = (req: authRequest, res: Response, next: NextFunction) => {
     const authHeader = req.headers.authorization;
-    console.log("authHeader: ", authHeader);
+    // console.log("authHeader: ", authHeader);
     
 
     if(!authHeader) {
@@ -19,8 +19,6 @@ export const authMiddleware = (req: authRequest, res: Response, next: NextFuncti
 
     try {
         const token = authHeader.split(" ")[1];
-        console.log("token: ", token);
-        
     
         if(!token) {
             res.status(401).json({ "msg": "No token provided" });

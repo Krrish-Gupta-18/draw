@@ -29,7 +29,10 @@ async function getCursorImage(id: string, color: string) {
 const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, cursors: any }) => {
     const { user } = useAuth();
     const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const viewportRef = useRef(viewportTransform);
+    const viewportRef = useRef(viewportTransform());
+    
+    // Update viewport reference immediately when prop changes
+    viewportRef.current = viewportTransform();
 
     useEffect(() => {
         if (!user) return;
@@ -65,8 +68,8 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, 
                 viewportRef.current.y
             );
 
-            // draw cursors here using latest viewportRef.current
             Object.keys(cursors).forEach(async (id) => {
+                if (!cursorCanvasRef.current) return;
                 const cursor = cursors[id];
                 if (!cursor) return;
                 ctx.beginPath();
@@ -96,19 +99,13 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, 
         };
     }, [user]);
 
-    // keep viewportRef updated
-    useEffect(() => {
-        viewportRef.current = viewportTransform;
-    }, [viewportTransform]);
-
     return null;
 };
-
 
 export default function Canvas({ roomId, socket }: { roomId?: string, socket: WebSocket }) {
     const can = useRef<HTMLCanvasElement>(null);
     const cursors = useRef<{[id: string]:{ color?: string; name?: string; x: number; y: number;}}>({});
-    const [game, setGame] = useState<Board>();
+    const game = useRef<Board | null>(null);
     const [zoom, setZoom] = useState<number>(100);
     const [elements, setElements] = useState<Shape[] | null>(null);
     const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
@@ -118,6 +115,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
         if(!localStorage.getItem('token')) {
             window.location.href = '/log-in';
         }
+        console.log('📡 Fetching elements for room:', roomId);
         const fetchData = async () => {
             const elements = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/document/${roomId}`, {
                 method: 'GET',
@@ -127,6 +125,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             });
 
             const elementsData = await elements.json();
+            console.log('📊 Elements fetched:', elementsData?.elements?.length || 0, 'shapes');
             
             if(elementsData) {
                 setElements(elementsData.elements as Shape[] || null);
@@ -138,20 +137,40 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     }, []);
     
     useEffect(() => {
-        if (can.current) {
+        if (can.current && socket && roomId && elements !== null) {
+            console.log('🔄 Canvas useEffect triggered - Creating new Board instance');
+            
+            // Cleanup any existing game instance before creating a new one
+            if (game.current) {
+                // console.log('🗑️ Destroying existing Board instance');
+                game.current.destroy();
+                game.current = null;
+            }
+            
+            // console.log('🆕 Creating new Board instance');
             const newGame = new Board(can.current, 1, setZoom, roomId as string, socket, elements);
             
             newGame.setPropertyChangeCallback((shape: Shape | null) => {
                 setSelectedShape(shape);
             });
             
-            setGame(newGame);
+            game.current = newGame;
+            // console.log('✅ Board instance created and assigned to ref');
             
             return () => {
+                // console.log('🧹 Canvas cleanup function called');
                 newGame?.destroy();
+                game.current = null;
             }
+        } else {
+            // console.log('⏸️ Canvas useEffect skipped:', {
+            //     hasCanvas: !!can.current,
+            //     hasSocket: !!socket,
+            //     hasRoomId: !!roomId,
+            //     elementsNotNull: elements !== null
+            // });
         }
-    }, [elements])
+    }, [roomId, socket, elements])
 
     useEffect(() => {
         socket.onmessage = (message) => {
@@ -166,102 +185,97 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                     color: data.color,
                     name: data.name
                 }
-                // console.log(data.color);
             }
 
             if(data.type == "moveShapes") {
-                if(!game) return;
+                if(!game.current) return;
                 for (let i = 0; i < data.shapes.length; i++) {
                     const shape = data.shapes[i];
-                    game.moveShape(shape);
+                    game.current.moveShape(shape);
                 }
             }
 
             if(data.type == "addShape") {
-                console.log(data.shape);
-                
-                game?.addShape(data.shape);
+                game.current?.addShape(data.shape);
             }
 
             if(data.type == "updateProperties") {
-                console.log("Received property update:", data.shape);
-                
-                game?.updateShapeFromRemote(data.shape);
+                game.current?.updateShapeFromRemote(data.shape);
             }
         }
-    }, [game]) // Add game as dependency
+    }, [game.current])
 
     const handlePropertyChange = (shapeId: number, properties: {[key: string]: any}) => {
-        if (game) {
-            game.updateShapeProperties(shapeId, properties);
+        if (game.current) {
+            game.current.updateShapeProperties(shapeId, properties);
         }
     };
 
     return (
         <>
-            {game && <CursorsLayer viewportTransform={game?.viewportTransform} cursors={cursors.current!}/>}
+            {game.current && <CursorsLayer viewportTransform={game.current?.getViewportTransform.bind(game.current)} cursors={cursors.current!}/>}
             {showPropertyPanel && <PropertyPanel 
                 selectedShape={selectedShape} 
                 onPropertyChange={handlePropertyChange}
             />}
             <div className="fixed left-[50%] z-100 flex rounded-2xl shadow-(--shadow-island) translate-x-[-50%] mt-[20px] p-[10px] bg-[white]">
                 <div id="move" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="move" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="move" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.25"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M8 13v-7.5a1.5 1.5 0 0 1 3 0v6.5"></path><path d="M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5"></path><path d="M14 5.5a1.5 1.5 0 0 1 3 0v6.5"></path><path d="M17 7.5a1.5 1.5 0 0 1 3 0v8.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"></path></g></svg>
                 </div>
 
                 <div className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="drag" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="drag" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 22 22" fill="none" strokeWidth="1.25"><g stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M6 6l4.153 11.793a0.365 .365 0 0 0 .331 .207a0.366 .366 0 0 0 .332 -.207l2.184 -4.793l4.787 -1.994a0.355 .355 0 0 0 .213 -.323a0.355 .355 0 0 0 -.213 -.323l-11.787 -4.36z"></path><path d="M13.5 13.5l4.5 4.5"></path></g></svg>
                 </div>
 
                 <div id="rect" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="rect" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="rect" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect></g></svg>
                 </div>
 
                 <div id="line" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="line" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="line" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M4.167 10h11.666" strokeWidth="1.5"></path></svg>
                 </div>
 
                 <div id="circle" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="circle" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="circle" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><circle cx="12" cy="12" r="9"></circle></g></svg>
                 </div>
 
                 <div id="ellipse" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="ellipse" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="ellipse" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><ellipse cx="12" cy="12" ry="7" rx="10"></ellipse></g></svg>
                 </div>
 
                 <div id="arrow" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="arrow" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="arrow" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><line x1="5" y1="12" x2="19" y2="12"></line><line x1="15" y1="16" x2="19" y2="12"></line><line x1="15" y1="8" x2="19" y2="12"></line></g></svg>
                 </div>
 
                 <div id="freehand" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="freehand" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="freehand" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.25"><path clipRule="evenodd" d="m7.643 15.69 7.774-7.773a2.357 2.357 0 1 0-3.334-3.334L4.31 12.357a3.333 3.333 0 0 0-.977 2.357v1.953h1.953c.884 0 1.732-.352 2.357-.977Z"></path><path d="m11.25 5.417 3.333 3.333"></path></g></svg>
                 </div>
 
                 <div id="text" className="btn">
-                    <input className="nav-check" type="radio" name="shape" value="text" onChange={(e) => game?.setCurrShape(e.target.value)}/>
+                    <input className="nav-check" type="radio" name="shape" value="text" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" className="" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><line x1="4" y1="20" x2="7" y2="20"></line><line x1="14" y1="20" x2="21" y2="20"></line><line x1="6.9" y1="15" x2="13.8" y2="15"></line><line x1="10.2" y1="6.3" x2="16" y2="20"></line><polyline points="5 20 11 4 13 4 20 20"></polyline></g></svg>
                 </div>
 
                 <div className="w-[1px] h-[1.4rem] mt-[0.2rem] ml-0.5 mr-0.5 bg-gray-300"></div>
 
-                <div id="delete" className="btn" onClick={(e) => game?.delete()}>
+                <div id="delete" className="btn" onClick={(e) => game.current?.delete()}>
                     <span></span>
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" className="" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M3.333 5.833h13.334M8.333 9.167v5M11.667 9.167v5M4.167 5.833l.833 10c0 .92.746 1.667 1.667 1.667h6.666c.92 0 1.667-.746 1.667-1.667l.833-10M7.5 5.833v-2.5c0-.46.373-.833.833-.833h3.334c.46 0 .833.373.833.833v2.5"></path></svg>
                 </div>
@@ -269,26 +283,25 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
 
             <div className="fixed bottom-[20px] left-[20px] z-100 flex mt-[20px]">
                 <div className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) p-[5px]">
-                    <div className="btn" onClick={e => {game?.scale(0.1)}}>
+                    <div className="btn" onClick={e => {game.current?.scale(0.1)}}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M10 4.167v11.666M4.167 10h11.666"></path></svg>
                     </div>
 
                     <span className="m-[4px]">{Math.round(zoom)}%</span>
 
-                    <div className="btn" onClick={e => {game?.scale(-0.1)}}>
+                    <div className="btn" onClick={e => {game.current?.scale(-0.1)}}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20"  fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M5 10h10" strokeWidth="1.25"></path></svg>
                     </div>
                 </div>
 
                 <div className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) ml-[10px] p-[5px]">
-                    <div id="undo" className="btn" onClick={e => game?.undo()}>
+                    <div id="undo" className="btn" onClick={e => game.current?.undo()}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M7.5 10.833 4.167 7.5 7.5 4.167M4.167 7.5h9.166a3.333 3.333 0 0 1 0 6.667H12.5" strokeWidth="1.25"></path></svg>
                     </div>
 
-                    <div id="redo" className="btn" onClick={e => game?.redo()}>
+                    <div id="redo" className="btn" onClick={e => game.current?.redo()}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="M12.5 10.833 15.833 7.5 12.5 4.167M15.833 7.5H6.667a3.333 3.333 0 1 0 0 6.667H7.5" strokeWidth="1.25"></path></svg>
                     </div>
-
                 </div>
 
                 <div className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) ml-[10px] p-[5px]">

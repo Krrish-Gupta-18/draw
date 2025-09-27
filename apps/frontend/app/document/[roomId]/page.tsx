@@ -23,11 +23,6 @@ export default function Doc() {
             });
             console.log(data);
             ws.send(data)
-
-            ws.onmessage = (event) => {
-                const message = JSON.parse(event.data.toString());
-                console.log("Message from server ", message);
-            }
         }
         
     }, [])

@@ -1,4 +1,3 @@
-import { text } from "node:stream/consumers"
 import { handelDebounce, handelSave } from "../utils/save"
 
 export type Shape = {
@@ -91,11 +90,7 @@ export default class Board {
     private can;
     public shapes: Shape[] = [];
     private isDrawing: Boolean = false;
-    public viewportTransform: {x: number, y: number, scale: number} = {
-        x: 0,
-        y: 0,
-        scale: 1
-    }
+    public viewportTransform: {x: number, y: number, scale: number} = {x: 100, y: 0, scale: 1};
     private features: string[] = ["delete", "move", "drag"];
     public currShape: string = "line";
     private startX: number = 0;
@@ -115,6 +110,16 @@ export default class Board {
     private socket: WebSocket | null = null;
     private lastSend: number = 0;
     private propertyChangeCallback: ((shape: Shape | null) => void) | null = null;
+    
+    // Store bound event handlers for proper cleanup
+    private boundMouseUp: (e: PointerEvent) => void;
+    private boundMouseMove: (e: PointerEvent) => void;
+    private boundMouseDown: (e: PointerEvent) => void;
+    private boundResize: () => void;
+    private boundHandelWheel: (e: WheelEvent) => void;
+    
+    // Add unique identifier for debugging
+    private instanceId: string;
 
     constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, socket:WebSocket, elements?: {} | null) {
         this.isDrawingEnabled = false;
@@ -128,6 +133,17 @@ export default class Board {
         this.can.width = window.innerWidth;
         this.can.height = window.innerHeight;
         this.roomId = roomId;
+        
+        // Generate unique instance ID for debugging
+        this.instanceId = Math.random().toString(36).substr(2, 9);
+        
+        // Bind event handlers once
+        this.boundMouseUp = this.mouseUp.bind(this);
+        this.boundMouseMove = this.mouseMove.bind(this);
+        this.boundMouseDown = this.mouseDown.bind(this);
+        this.boundResize = this.resize.bind(this);
+        this.boundHandelWheel = this.handelWheel.bind(this);
+        
         if(!localStorage.getItem("cursorColor")) localStorage.setItem("cursorColor", getRandomColorHSL());
         this.init();
         this.initHandler();
@@ -135,7 +151,9 @@ export default class Board {
             this.shapes = (elements as Shape[]);
             this.top = this.shapes.length - 1;
             this.clearCanvas();
-            console.log(this.shapes);
+            // console.log(`Board[${this.instanceId}] initialized with shapes:`, this.shapes.length, 'shapes');
+        } else {
+            // console.log(`Board[${this.instanceId}] initialized with no elements`);
         }
     }
 
@@ -170,7 +188,6 @@ export default class Board {
             this.scale(delta * 0.1);
         }
     }
-
 
     handelText(e: PointerEvent, fontSize: number = 25) {
         if(this.input) {
@@ -233,6 +250,7 @@ export default class Board {
             color: this.color
         }
         this.shapes[++this.top] = s;
+        this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId}))
         this.clearCanvas();
     }
 
@@ -262,7 +280,6 @@ export default class Board {
         const updatedShape = { ...currentShape, ...properties } as Shape;
         this.shapes[shapeIndex] = updatedShape;
         
-        // Broadcast the property change to other users
         if (this.socket?.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify({ 
                 type: "updateProperties", 
@@ -280,7 +297,6 @@ export default class Board {
     }
 
     clearCanvas() {
-        
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.can.width, this.can.height);
         this.ctx.fillStyle = "rgba(255, 255, 255)";
@@ -449,32 +465,43 @@ export default class Board {
         }
     }
 
+    getViewportTransform() {
+        return this.viewportTransform;
+    }
+
+    private sendCursorPosition(x: number, y: number) {
+        const throttle = 30;
+        const now = performance.now();
+        
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+        if (now - this.lastSend < throttle) return;
+
+        this.socket.send(JSON.stringify({ type: "mousePos", x, y, color: localStorage.getItem("cursorColor"), roomId: this.roomId }));
+        
+        console.log(`🚀 SEND: (${x.toFixed(1)}, ${y.toFixed(1)}) | Viewport: (${this.viewportTransform.x.toFixed(1)}, ${this.viewportTransform.y.toFixed(1)}, ${this.viewportTransform.scale.toFixed(2)}) | Time: ${now - this.lastSend}`);
+        this.lastSend = now;
+    }
+
     mouseMove(e: PointerEvent) {
         let rect = this.can.getBoundingClientRect();
         let x = (e.clientX - rect.left - this.viewportTransform.x) / this.viewportTransform.scale;
         let y = (e.clientY - rect.top - this.viewportTransform.y) / this.viewportTransform.scale;
-
-        const now = performance.now();
-        const throttle = 30;
         
-        if(this.socket?.readyState == this.socket?.OPEN && now - this.lastSend >= throttle) {
-            this.socket?.send(JSON.stringify({ type: "mousePos", x, y, color: localStorage.getItem("cursorColor"), roomId: this.roomId}));
-        }
+        this.sendCursorPosition(x, y);
+        console.log(`Board[${this.instanceId}]:`, this.viewportTransform, this.shapes.length, 'shapes');
         
+        // ... existing code ...
         if (this.isMoving) {
             this.can.style.cursor = "grabbing";
-
+            
             this.viewportTransform.x += e.clientX - this.startX;
             this.viewportTransform.y += e.clientY - this.startY;
             this.startX = e.clientX;
             this.startY = e.clientY;
-            
-            this.lastSend = now;
 
             this.clearCanvas();
             return;
         }
-        
         
         if (this.isDrawing) {
             this.clearCanvas();
@@ -542,11 +569,9 @@ export default class Board {
             if(!this.selected) return;
 
             this.socket?.send(JSON.stringify({ type: "moveShapes", shapes: [this.selected], ex, ey, roomId: this.roomId}))
-            this.lastSend = performance.now();
 
             let x = ex - this.startX;
             let y = ey - this.startY;
-
 
             switch (this.selected.type) {
                 case "rect":
@@ -598,9 +623,7 @@ export default class Board {
         if(this.currShape == "drag" && !this.isDragging) {
             
             const err = 7;
-            let rect = this.can.getBoundingClientRect();
-            let x = (e.clientX - rect.left - this.viewportTransform.x) / this.viewportTransform.scale;
-            let y = (e.clientY - rect.top - this.viewportTransform.y) / this.viewportTransform.scale;
+
             let hover = false;
 
             for (let i = this.top; i >= 0; i--) {
@@ -610,7 +633,6 @@ export default class Board {
                 
                 if(ele.type == "rect") {
                     if (this.isNearRect(x, y, ele)) {
-                        console.log("moving...");
                         hover = true;
                         break;
                     }
@@ -729,7 +751,6 @@ export default class Board {
                     var cir2 = (Math.pow((x - ele.centerX) / (ele.rx + 12), 2) + Math.pow((y - ele.centerY)/(ele.ry + 12), 2) - 1);
     
                     if (cir2 <= 0 && cir1 > 0) {
-                        console.log("ellipse selected");
                         this.selected = ele;
                         this.can.style.cursor = "move";
                         break;
@@ -775,7 +796,6 @@ export default class Board {
             if (this.selected) this.isDragging = true;
             else this.isDragging = false;   
             
-            // Notify property panel about selection change
             if (this.propertyChangeCallback) {
                 this.propertyChangeCallback(this.selected);
             }
@@ -790,7 +810,6 @@ export default class Board {
         this.can.setPointerCapture(e.pointerId);
         
         if(this.shapes) {
-            console.log(this.shapes)
             this.shapes.splice(this.top + 1, this.shapes.length - this.top - 1);
         }
 
@@ -840,8 +859,7 @@ export default class Board {
                         y: this.startY,
                         width: x - this.startX,
                         height: y - this.startY,
-                        color: this.color,
-                        // selected: false
+                        color: this.color
                     }
                     
                     break;
@@ -855,8 +873,7 @@ export default class Board {
                         centerX: this.startX + r,
                         centerY: this.startY + r,
                         radius: Math.abs(r),
-                        color: this.color,
-                        // selected: false
+                        color: this.color
                     }
                     break;
 
@@ -868,8 +885,7 @@ export default class Board {
                         sy: this.startY,
                         ex: x,
                         ey: y - this.can.offsetTop,
-                        color: this.color,
-                        // selected: false
+                        color: this.color
                     }
                     break;
 
@@ -900,7 +916,7 @@ export default class Board {
                     break;
             }
             if(s && this.currShape != "freehand") {
-                console.log(this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId})))
+                this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId}))
                 this.shapes.splice(++this.top, this.shapes.length - this.top, s);
             }
             this.clearCanvas();
@@ -929,23 +945,42 @@ export default class Board {
     }
 
     initHandler() {
-        this.can.addEventListener("pointerup", this.mouseUp.bind(this));
-        this.can.addEventListener("pointermove", this.mouseMove.bind(this));
-        this.can.addEventListener("pointerdown", this.mouseDown.bind(this), { passive: false });
-        this.can.addEventListener("pointercancel", this.mouseUp.bind(this));
+        console.log(`Board[${this.instanceId}] adding event listeners`);
+        this.can.addEventListener("pointerup", this.boundMouseUp);
+        this.can.addEventListener("pointermove", this.boundMouseMove, { passive: false });
+        this.can.addEventListener("pointerdown", this.boundMouseDown, { passive: false });
+        this.can.addEventListener("pointercancel", this.boundMouseUp);
 
-        window.addEventListener("resize", this.resize.bind(this))
-        window.addEventListener("wheel", this.handelWheel, { passive: false });
+        window.addEventListener("resize", this.boundResize);
+        window.addEventListener("wheel", this.boundHandelWheel, { passive: false });
     }
 
     destroy() {
-        this.can.removeEventListener("pointerup", this.mouseUp);
-        this.can.removeEventListener("pointermove", this.mouseMove);
-        this.can.removeEventListener("pointerdown", this.mouseDown);
-        this.can.removeEventListener("pointercancel", this.mouseUp);
-        // this.can.removeEventListener("click", this.click);
+        console.log(`Board[${this.instanceId}] destroying and cleaning up`);
+        
+        // Remove all event listeners using bound references
+        this.can.removeEventListener("pointerup", this.boundMouseUp);
+        this.can.removeEventListener("pointercancel", this.boundMouseUp);
+        this.can.removeEventListener("pointermove", this.boundMouseMove);
+        this.can.removeEventListener("pointerdown", this.boundMouseDown);
 
-        window.removeEventListener("resize", this.resize)
-        window.removeEventListener("wheel", this.handelWheel);
+        window.removeEventListener("resize", this.boundResize);
+        window.removeEventListener("wheel", this.boundHandelWheel);
+        
+        // Clean up any text input elements
+        if (this.input && this.input.parentNode) {
+            this.input.parentNode.removeChild(this.input);
+            this.input = null;
+        }
+        
+        // Don't close socket connection as it's shared between instances
+        // The parent component should handle socket cleanup
+        
+        // Clear shapes and canvas
+        this.shapes = [];
+        this.top = -1;
+        this.selected = null;
+        
+        console.log(`Board[${this.instanceId}] destroyed and cleaned up`);
     }
 }

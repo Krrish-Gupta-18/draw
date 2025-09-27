@@ -10,7 +10,7 @@ const authRouter:Router = Router();
 authRouter.post("/sign-up", async (req: Request, res: Response) => {
     try {
         const user = User.safeParse(req.body);
-        console.log(req.body, user);
+        // console.log(req.body, user);
         
         if(!user.success) {
             res.status(400).json({ "msg": user.error.message });
@@ -63,7 +63,7 @@ authRouter.post("/sign-in", async (req: Request, res: Response) => {
             return
         }
 
-        console.log(user);
+        // console.log(user);
 
         const token = jwt.sign(user, JWT_SECRET);
         res.json({ token });
