@@ -10,7 +10,8 @@ export type Shape = {
     color: string,
     fillColor?: string,
     strokeWidth?: number,
-    opacity?: number
+    opacity?: number,
+    isDeleted?: boolean
 } | {
     id: number,
     type: "circle",
@@ -20,7 +21,8 @@ export type Shape = {
     color: string,
     fillColor?: string,
     strokeWidth?: number,
-    opacity?: number
+    opacity?: number,
+    isDeleted?: boolean
 } | {
     id: number,
     type: "line",
@@ -30,7 +32,8 @@ export type Shape = {
     ey: number,
     color: string,
     strokeWidth?: number,
-    opacity?: number
+    opacity?: number,
+    isDeleted?: boolean
 } | {
     id: number,
     type: "ellipse",
@@ -41,11 +44,15 @@ export type Shape = {
     color: string,
     fillColor?: string,
     strokeWidth?: number,
-    opacity?: number
+    opacity?: number,
+    isDeleted?: boolean
 } | {
     id: number,
     type: "delete",
     color?: string,
+    isDeleted?: boolean,
+    strokeWidth?: number,
+    opacity?: number,
     // selected?: boolean
 } | {
     id: number,
@@ -56,7 +63,8 @@ export type Shape = {
     ey: number,
     color: string,
     strokeWidth?: number,
-    opacity?: number
+    opacity?: number,
+    isDeleted?: boolean
 } | {
     type: "freehand",
     points: {x: number, y: number}[],
@@ -64,6 +72,7 @@ export type Shape = {
     strokeWidth?: number,
     opacity?: number,
     id: number,
+    isDeleted?: boolean
 } | {
     type: "text",
     x: number,
@@ -76,6 +85,15 @@ export type Shape = {
     strokeWidth?: number,
     opacity?: number,
     id: number,
+    isDeleted?: boolean
+} | {
+    id: number, 
+    type: "erase",
+    elementId: number,
+    strokeWidth?: number,
+    color?: string,
+    isDeleted?: boolean,
+    opacity?: number,
 }
 
 function getRandomColorHSL() {
@@ -97,7 +115,9 @@ export default class Board {
     private startY: number = 0;
     public color: string = "red";
     public isDrawingEnabled: boolean;
+    private eraseShape: Shape | null = null;
     public isMoving: Boolean = false;
+    public isErasing: Boolean = false;
     public isDragging: Boolean = false;
     public top: number = -1;
     public lineWidth: number;
@@ -117,9 +137,6 @@ export default class Board {
     private boundMouseDown: (e: PointerEvent) => void;
     private boundResize: () => void;
     private boundHandelWheel: (e: WheelEvent) => void;
-    
-    // Add unique identifier for debugging
-    private instanceId: string;
 
     constructor(can: HTMLCanvasElement, lineWidth: number, setZoom: (num: number) => void, roomId:string, socket:WebSocket, elements?: {} | null) {
         this.isDrawingEnabled = false;
@@ -133,9 +150,6 @@ export default class Board {
         this.can.width = window.innerWidth;
         this.can.height = window.innerHeight;
         this.roomId = roomId;
-        
-        // Generate unique instance ID for debugging
-        this.instanceId = Math.random().toString(36).substr(2, 9);
         
         // Bind event handlers once
         this.boundMouseUp = this.mouseUp.bind(this);
@@ -171,7 +185,6 @@ export default class Board {
     }
 
     scale(factor: number) {
-        // console.log("scale", factor);
         
         this.viewportTransform.scale += factor;
         this.viewportTransform.x -= factor * this.can.width / 2;
@@ -296,11 +309,22 @@ export default class Board {
         return this.selected;
     }
 
+    setDeleteShape(id: number, dId?: number) {
+        const delId = dId || Date.now();
+        this.shapes[++this.top] = { id: delId, type: "erase", elementId: id };
+        if(dId) {
+            this.clearCanvas();
+            return;
+        }
+        this.socket?.send(JSON.stringify({type: "erase", elementId: id, id: delId, roomId: this.roomId}))
+    }
+
     clearCanvas() {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.can.width, this.can.height);
         this.ctx.fillStyle = "rgba(255, 255, 255)";
         this.ctx.fillRect(0, 0, this.can.width, this.can.height);
+        const delMap = new Map();
 
         this.ctx.setTransform(
             this.viewportTransform.scale,
@@ -314,7 +338,11 @@ export default class Board {
         for(var i = this.top; i >= 0; i--) {
             var ele = this.shapes[i];
 
-            if (!ele?.type) continue
+            if ((!ele?.type) || ele?.isDeleted) continue;
+            if(ele.type == "erase") {
+                delMap.set(ele.elementId, true);
+            }
+            if(delMap.has(ele.id)) continue;
 
             if(ele.type == "delete") break;
             if(this.selected && this.selected.id == ele.id) {
@@ -328,15 +356,17 @@ export default class Board {
                 }
             }
             else {
-                this.ctx.strokeStyle = ele.color;
+                if(ele.color) this.ctx.strokeStyle = ele.color;
                 this.ctx.lineWidth = ele.strokeWidth || this.lineWidth;
             }
 
-            // Set opacity if defined
             if (ele.opacity !== undefined) {
                 this.ctx.globalAlpha = ele.opacity;
             } else {
-                this.ctx.globalAlpha = 1;
+                if(this.eraseShape && this.eraseShape.id == ele.id) {
+                    this.ctx.globalAlpha = 0.1;
+                }
+                else this.ctx.globalAlpha = 1;
             }
 
             switch (ele.type) {
@@ -482,15 +512,95 @@ export default class Board {
         this.lastSend = now;
     }
 
+    onHover(e: PointerEvent, x: number, y: number) { 
+        const err = 7;
+        var hover = false;
+
+        for (let i = this.top; i >= 0; i--) {
+            let ele = this.shapes[i];
+            
+            if(this.features.includes(ele.type)) break;
+            
+            if(ele.type == "rect") {
+                if (this.isNearRect(x, y, ele)) {
+                    hover = true;
+                    if(this.currShape == "erase") this.eraseShape = ele;
+                    break;
+                }
+            }
+
+            if (ele.type == "circle") {
+                var cir1 = (Math.pow(x - ele.centerX, 2) + Math.pow(y - ele.centerY, 2) - Math.pow(ele.radius + 12, 2));
+                var cir2 = (Math.pow(x - ele.centerX, 2) + Math.pow(y - ele.centerY, 2) - Math.pow(ele.radius - 12, 2));
+                
+                if (cir2 > 0 && cir1 < 0) {
+                    hover = true;
+                    if(this.currShape == "erase") this.eraseShape = ele;
+                    break;
+                }
+            }
+
+            if (ele.type == "ellipse") {
+                var cir1 = (Math.pow((x - ele.centerX) / (ele.rx - 12), 2) + Math.pow((y - ele.centerY)/(ele.ry - 12), 2) - 1);
+                var cir2 = (Math.pow((x - ele.centerX) / (ele.rx + 12), 2) + Math.pow((y - ele.centerY)/(ele.ry + 12), 2) - 1);
+
+                if (cir2 <= 0 && cir1 > 0) {
+                    hover = true;
+                    if(this.currShape == "erase") this.eraseShape = ele;
+                    break;
+                }
+            }
+
+            if (ele.type == "line" || ele.type == "arrow") {
+                let m = (ele.ey - ele.sy) / (ele.ex - ele.sx);
+                let b = ele.sy - m * ele.sx;
+                let dist = Math.abs(m * x - y + b) / Math.sqrt(m * m + 1);
+                
+                if(dist <= err) {
+                    hover = true;
+                    if(this.currShape == "erase") this.eraseShape = ele;
+                    break;
+                }
+            }
+
+            if (ele.type == "freehand") {
+                let a = ele.points;
+
+                for (let i = 0; i < ele.points.length; i++) {
+                    const pt = a[i];
+                    let dist = Math.sqrt(Math.pow((pt.x - x), 2) + Math.pow((pt.y - y),2));
+                    if(dist < err) {
+                        hover = true;
+                        if(this.currShape == "erase") this.eraseShape = ele;
+                        break;
+                    }
+                }
+            }
+
+            if(ele.type == "text") {
+                if(x >= ele.x && x <= ele.x + ele.width && y >= ele.y && y <= ele.y + ele.height) {
+                    hover = true;
+                    if(this.currShape == "erase") this.eraseShape = ele;
+                    break;
+                }
+            }
+        };
+
+        this.can.style.cursor = hover ? "pointer": "initial";
+
+        if(!hover && this.eraseShape !== null) {
+            this.eraseShape = null;
+        }
+        this.clearCanvas();
+    }
+
     mouseMove(e: PointerEvent) {
         let rect = this.can.getBoundingClientRect();
         let x = (e.clientX - rect.left - this.viewportTransform.x) / this.viewportTransform.scale;
         let y = (e.clientY - rect.top - this.viewportTransform.y) / this.viewportTransform.scale;
         
         this.sendCursorPosition(x, y);
-        console.log(`Board[${this.instanceId}]:`, this.viewportTransform, this.shapes.length, 'shapes');
         
-        // ... existing code ...
         if (this.isMoving) {
             this.can.style.cursor = "grabbing";
             
@@ -621,76 +731,11 @@ export default class Board {
         }
 
         if(this.currShape == "drag" && !this.isDragging) {
-            
-            const err = 7;
+            this.onHover(e, x, y);
+        }
 
-            let hover = false;
-
-            for (let i = this.top; i >= 0; i--) {
-                let ele = this.shapes[i];
-                
-                if(this.features.includes(ele.type)) break;
-                
-                if(ele.type == "rect") {
-                    if (this.isNearRect(x, y, ele)) {
-                        hover = true;
-                        break;
-                    }
-                }
-
-                if (ele.type == "circle") {
-                    var cir1 = (Math.pow(x - ele.centerX, 2) + Math.pow(y - ele.centerY, 2) - Math.pow(ele.radius + 12, 2));
-                    var cir2 = (Math.pow(x - ele.centerX, 2) + Math.pow(y - ele.centerY, 2) - Math.pow(ele.radius - 12, 2));
-                    
-                    if (cir2 > 0 && cir1 < 0) {
-                        hover = true;
-                        break;
-                    }
-                }
-
-                if (ele.type == "ellipse") {
-                    var cir1 = (Math.pow((x - ele.centerX) / (ele.rx - 12), 2) + Math.pow((y - ele.centerY)/(ele.ry - 12), 2) - 1);
-                    var cir2 = (Math.pow((x - ele.centerX) / (ele.rx + 12), 2) + Math.pow((y - ele.centerY)/(ele.ry + 12), 2) - 1);
-    
-                    if (cir2 <= 0 && cir1 > 0) {
-                        hover = true;
-                        break;
-                    }
-                }
-
-                if (ele.type == "line" || ele.type == "arrow") {
-                    let m = (ele.ey - ele.sy) / (ele.ex - ele.sx);
-                    let b = ele.sy - m * ele.sx;
-                    let dist = Math.abs(m * x - y + b) / Math.sqrt(m * m + 1);
-                    
-                    if(dist <= err) {
-                        hover = true;
-                        break;
-                    }
-                }
-
-                if (ele.type == "freehand") {
-                    let a = ele.points;
-
-                    for (let i = 0; i < ele.points.length; i++) {
-                        const pt = a[i];
-                        let dist = Math.sqrt(Math.pow((pt.x - x), 2) + Math.pow((pt.y - y),2));
-                        if(dist < err) {
-                            hover = true;
-                            break;
-                        }
-                    }
-                }
-
-                if(ele.type == "text") {
-                    if(x >= ele.x && x <= ele.x + ele.width && y >= ele.y && y <= ele.y + ele.height) {
-                        hover = true;
-                        break;
-                    }
-                }
-            };
-
-            this.can.style.cursor = hover ? "pointer": "initial";
+        if(this.currShape == "erase" && !this.isErasing) {
+            this.onHover(e, x, y);
         }
     }
     
@@ -840,6 +885,11 @@ export default class Board {
             this.can.style.cursor = "grab";
         }
 
+        if(this.currShape == "erase" && this.eraseShape) {
+            this.setDeleteShape(this.eraseShape.id)
+            this.eraseShape = null;
+        }
+
         if (this.isDragging) {
             this.isDragging = false;
             this.can.style.cursor = "crosshair";
@@ -945,7 +995,6 @@ export default class Board {
     }
 
     initHandler() {
-        console.log(`Board[${this.instanceId}] adding event listeners`);
         this.can.addEventListener("pointerup", this.boundMouseUp);
         this.can.addEventListener("pointermove", this.boundMouseMove, { passive: false });
         this.can.addEventListener("pointerdown", this.boundMouseDown, { passive: false });
@@ -956,9 +1005,6 @@ export default class Board {
     }
 
     destroy() {
-        console.log(`Board[${this.instanceId}] destroying and cleaning up`);
-        
-        // Remove all event listeners using bound references
         this.can.removeEventListener("pointerup", this.boundMouseUp);
         this.can.removeEventListener("pointercancel", this.boundMouseUp);
         this.can.removeEventListener("pointermove", this.boundMouseMove);
@@ -967,20 +1013,9 @@ export default class Board {
         window.removeEventListener("resize", this.boundResize);
         window.removeEventListener("wheel", this.boundHandelWheel);
         
-        // Clean up any text input elements
         if (this.input && this.input.parentNode) {
             this.input.parentNode.removeChild(this.input);
             this.input = null;
         }
-        
-        // Don't close socket connection as it's shared between instances
-        // The parent component should handle socket cleanup
-        
-        // Clear shapes and canvas
-        this.shapes = [];
-        this.top = -1;
-        this.selected = null;
-        
-        console.log(`Board[${this.instanceId}] destroyed and cleaned up`);
     }
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import Board from "../draw/Game";
-import { use, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback } from "react"
 import { Shape } from "../draw/Game";
 import { handelSave } from "../utils/save";
 import { useAuth } from "../app/context/useAuth";
@@ -16,9 +16,8 @@ async function getCursorImage(id: string, color: string) {
     if (cursorImages[id]) {
         return cursorImages[id];
     }
-    // const data = await fetch(`${process.env.NEXT_PUBLIC_FRONTEND_URL}/api/cursor?=${color}`).then(res => res.json());
 
-    const url = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/api/cursor?=${color}`;
+    const url = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/api/cursor?color=${color}`;
 
     cursorImages[id] = new Image();
     cursorImages[id].src = url;
@@ -29,11 +28,8 @@ async function getCursorImage(id: string, color: string) {
 const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, cursors: any }) => {
     const { user } = useAuth();
     const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const viewportRef = useRef(viewportTransform());
+    const animationFrameId = useRef<number | null>(null);
     
-    // Update viewport reference immediately when prop changes
-    viewportRef.current = viewportTransform();
-
     useEffect(() => {
         if (!user) return;
 
@@ -51,36 +47,52 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, 
         cursorCanvasRef.current = cursorCanvas;
         const ctx = cursorCanvas.getContext('2d')!;
 
-        // Animation loop
-        let animationFrameId: number;
+        // Animation loop with real-time viewport sync
         const renderLoop = () => {
             if (!cursorCanvasRef.current) return;
 
+            // Get current viewport transform each frame
+            const currentViewport = viewportTransform();
+            
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
 
+            // Apply current viewport transformation
             ctx.setTransform(
-                viewportRef.current.scale,
+                currentViewport.scale,
                 0,
                 0,
-                viewportRef.current.scale,
-                viewportRef.current.x,
-                viewportRef.current.y
+                currentViewport.scale,
+                currentViewport.x,
+                currentViewport.y
             );
 
+            // Render cursors with current viewport
             Object.keys(cursors).forEach(async (id) => {
                 if (!cursorCanvasRef.current) return;
                 const cursor = cursors[id];
                 if (!cursor) return;
-                ctx.beginPath();
-                var img = await getCursorImage(id, cursor.color);
-                ctx.drawImage(img, cursor.x, cursor.y);
-                ctx.fill();
-                ctx.font = '12px Arial';
-                ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y + 35);
+                
+                ctx.save();
+                try {
+                    const img = await getCursorImage(id, cursor.color);
+                    ctx.drawImage(img, cursor.x, cursor.y);
+                    ctx.font = '12px Arial';
+                    ctx.fillStyle = '#000';
+                    ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y + 35);
+                } catch (error) {
+                    // Fallback if image fails to load
+                    ctx.fillStyle = cursor.color || '#000';
+                    ctx.beginPath();
+                    ctx.arc(cursor.x, cursor.y, 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.font = '12px Arial';
+                    ctx.fillText(cursor.name || 'User', cursor.x + 8, cursor.y + 35);
+                }
+                ctx.restore();
             });
 
-            animationFrameId = requestAnimationFrame(renderLoop);
+            animationFrameId.current = requestAnimationFrame(renderLoop);
         };
 
         renderLoop();
@@ -93,11 +105,15 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, 
         window.addEventListener('resize', handleResize);
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
+            if (animationFrameId.current) {
+                cancelAnimationFrame(animationFrameId.current);
+            }
             window.removeEventListener('resize', handleResize);
-            document.body.removeChild(cursorCanvas);
+            if (cursorCanvas.parentNode) {
+                document.body.removeChild(cursorCanvas);
+            }
         };
-    }, [user]);
+    }, [user, viewportTransform, cursors]); // Added viewportTransform and cursors as dependencies
 
     return null;
 };
@@ -110,6 +126,14 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     const [elements, setElements] = useState<Shape[] | null>(null);
     const [selectedShape, setSelectedShape] = useState<Shape | null>(null);
     const [showPropertyPanel, setShowPropertyPanel] = useState(false);
+    
+    // Simple viewport transform getter
+    const getViewportTransform = () => {
+        if (!game.current) {
+            return { x: 100, y: 0, scale: 1 };
+        }
+        return game.current.getViewportTransform();
+    };
 
     useEffect(() => {
         if(!localStorage.getItem('token')) {
@@ -202,6 +226,11 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             if(data.type == "updateProperties") {
                 game.current?.updateShapeFromRemote(data.shape);
             }
+
+            if(data.type == "erase") {
+                console.log("erase: ", data);
+                game.current?.setDeleteShape(data.elementId, data.id);
+            }
         }
     }, [game.current])
 
@@ -213,7 +242,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
 
     return (
         <>
-            {game.current && <CursorsLayer viewportTransform={game.current?.getViewportTransform.bind(game.current)} cursors={cursors.current!}/>}
+            {game.current && <CursorsLayer viewportTransform={getViewportTransform} cursors={cursors.current!}/>}
             {showPropertyPanel && <PropertyPanel 
                 selectedShape={selectedShape} 
                 onPropertyChange={handlePropertyChange}
@@ -273,11 +302,10 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                     <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" className="" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><line x1="4" y1="20" x2="7" y2="20"></line><line x1="14" y1="20" x2="21" y2="20"></line><line x1="6.9" y1="15" x2="13.8" y2="15"></line><line x1="10.2" y1="6.3" x2="16" y2="20"></line><polyline points="5 20 11 4 13 4 20 20"></polyline></g></svg>
                 </div>
 
-                <div className="w-[1px] h-[1.4rem] mt-[0.2rem] ml-0.5 mr-0.5 bg-gray-300"></div>
-
-                <div id="delete" className="btn" onClick={(e) => game.current?.delete()}>
+                <div id="erase" className="btn">
+                    <input className="nav-check" type="radio" name="shape" value="erase" onChange={(e) => game.current?.setCurrShape(e.target.value)}/>
                     <span></span>
-                    <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" className="" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M3.333 5.833h13.334M8.333 9.167v5M11.667 9.167v5M4.167 5.833l.833 10c0 .92.746 1.667 1.667 1.667h6.666c.92 0 1.667-.746 1.667-1.667l.833-10M7.5 5.833v-2.5c0-.46.373-.833.833-.833h3.334c.46 0 .833.373.833.833v2.5"></path></svg>
+                    <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 24 24" fill="none" strokeWidth="2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><g strokeWidth="1.5"><path stroke="none" d="M0 0h24v24H0z" fill="none"></path><path d="M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3"></path><path d="M18 13.3l-6.3 -6.3"></path></g></svg>
                 </div>
             </div>
 
@@ -305,8 +333,14 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                 </div>
 
                 <div className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) ml-[10px] p-[5px]">
-                    <button className="btn " onClick={e => setShowPropertyPanel(prev => !prev)}>
+                    <button className="btn" onClick={e => setShowPropertyPanel(prev => !prev)}>
                         <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" className="" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M5.833 5.833h8.334v8.334H5.833z"></path><path strokeWidth="1.25" d="M10 10.833v3.333"></path><path strokeWidth="1.25"/></svg>
+                    </button>
+                </div>
+
+                <div id="delete" className="bg-[white] flex content-center rounded-2xl shadow-(--shadow-island) ml-[10px] p-[5px]">
+                    <button className="btn" onClick={(e) => game.current?.delete()}>
+                        <svg aria-hidden="true" focusable="false" role="img" viewBox="0 0 20 20" className="" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path strokeWidth="1.25" d="M3.333 5.833h13.334M8.333 9.167v5M11.667 9.167v5M4.167 5.833l.833 10c0 .92.746 1.667 1.667 1.667h6.666c.92 0 1.667-.746 1.667-1.667l.833-10M7.5 5.833v-2.5c0-.46.373-.833.833-.833h3.334c.46 0 .833.373.833.833v2.5"></path></svg>
                     </button>
                 </div>
 

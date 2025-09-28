@@ -178,6 +178,11 @@ wss.on("connection", async (ws, req) => {
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
         }
 
+        if(payloadData.type == "erase") {
+            console.log("Erase:", payloadData);
+            broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
+        }
+
         if (payloadData.type == "updateProperties") {
             console.log("Property update:", payloadData);
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
