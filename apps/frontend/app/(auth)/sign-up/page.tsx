@@ -1,6 +1,6 @@
 "use client";
 import { env } from 'node:process';
-import React, { FormEvent, useState } from 'react';
+import React, { FormEvent, useEffect, useState } from 'react';
 
 
 const SignupForm = () => {
@@ -9,16 +9,21 @@ const SignupForm = () => {
   const [password, setPassword] = useState('');
   // const [confirmPassword, setConfirmPassword] = useState('');
 
+  useEffect(() => {
+
+    console.log({username: fullname, email, password});
+    
+  }, [fullname, email, password]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    console.log("hello", process.env.NEXT_PUBLIC_BACKEND_URL);
     
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/sign-up`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: fullname,
+          name: fullname,
           email,
           password,
         }),

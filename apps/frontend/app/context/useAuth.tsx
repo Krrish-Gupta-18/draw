@@ -31,6 +31,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<{ name:string } | null>(null);
     const refetch = async () => {
         const userData = await fetchData();
+
+        if(!userData?.id) {
+            window.location.href = '/log-in';
+        }
+
         setUser(userData);
     }
     useEffect(() => {

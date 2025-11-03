@@ -10,6 +10,7 @@ const server = http.createServer();
 const check = (token: string) => {
     try {
         const decode = jwt.verify(token as string, JWT_SECRET);
+        console.log(decode);
         
         if(typeof decode == "string") {
             return null;
@@ -62,7 +63,6 @@ wss.on("connection", async (ws, req) => {
     
     const url = req.url;
 
-    
     if (!url) return;
     const queryParams = new URLSearchParams(url.split('?')[1]);
     
@@ -220,7 +220,7 @@ const interval = setInterval(() => {
 
 server.on("upgrade", (request, socket, head) => {
   const origin = request.headers.origin;
-  const allowedOrigins = ["http://localhost:3000", "http://192.168.1.39:3000"];
+  const allowedOrigins = ["http://localhost:3000", "http://192.168.1.40:3000"];
 
   if (!allowedOrigins.includes(origin || "")) {
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");

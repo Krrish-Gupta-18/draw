@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Nav } from "../components/Nav";
 import Loading from "../components/Loading";
 import { AuthProvider, useAuth } from "./context/useAuth";
+import { log } from "node:console";
 
 type Doc = {
   id: string;
@@ -14,7 +15,7 @@ type Doc = {
 
 function Home() {
   const {user, refetch} = useAuth();
-  const [documents, setDocuments] = useState<Doc[] | ["Loading..."]>([]);
+  const [documents, setDocuments] = useState<Doc[] | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [text, setText] = useState("Create");
 
@@ -29,8 +30,16 @@ function Home() {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
-        }); 
+        });
       
+        if (!document.ok) {
+          if(document.status === 401) {
+            localStorage.removeItem('token');
+            window.location.href = '/log-in';
+          }
+          throw new Error('Failed to fetch documents');
+        }
+
         const documentData = await document.json();
         setDocuments(documentData);
       }
@@ -110,6 +119,16 @@ function Home() {
     const i = parseInt(target.dataset.index as string);
     console.log(i, documents);
     
+    if(!documents) {
+      alert("No documents found");
+      return;
+    }
+    
+    if(isNaN(i) || i < 0 || i >= documents.length) {
+      alert("Invalid document index");
+      return;
+    }
+
     const docId = (documents[i] as Doc)["id"];
 
     if(!docId) {
@@ -147,12 +166,14 @@ function Home() {
     return <Loading />;
   }
 
+  console.log("User:", user);
+
   return (
     <>
       <Nav userName={user.name}/>
       <div className="w-full flex items-center justify-center">
         <div className="w-[90%] flex flex-wrap items-center justify-items-center m-[20px] gap-8">
-            {documents[0] !== "Loading..." ? documents.map((doc: any, i) => {
+            {documents && documents.map((doc: any, i) => {
               return (
                 <div key={i} className="relative w-full sm:w-[250px] max-w-2xl p-4 border border-gray-300 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = `/document/${doc.id}`}>
                   <label htmlFor="toggle" className="absolute top-2 right-2 cursor-pointer">
@@ -171,7 +192,7 @@ function Home() {
                   <p className="text-gray-600">Collaborators: {doc.collaborators.map((collab: any) => collab.name).join(", ") || "None"}</p>
                 </div>
               )
-            }) : <Loading />}
+            })}
         </div>
       </div>
 

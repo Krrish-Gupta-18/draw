@@ -99,6 +99,8 @@ documentRouter.get("/:id", authMiddleware, async (req: authRequest, res: Respons
         const user = req.user as userType;
         const documentId = req.params.id;
 
+        console.log(user);
+
         const document = await prismaClient.document.findFirst({
             where: {
                 id: documentId,
@@ -141,6 +143,8 @@ documentRouter.get("/:id", authMiddleware, async (req: authRequest, res: Respons
                 }
             }
         });
+
+        console.log(document);
 
         if(!document) {
             return res.status(404).json({ msg: "Document not found" });

@@ -15,6 +15,8 @@ export default function Doc() {
     useEffect(() => {
         const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WEB_SOCKET_URL}?token=${localStorage.getItem("token")}`);
 
+        alert(`${process.env.NEXT_PUBLIC_WEB_SOCKET_URL}?token=${localStorage.getItem("token")}`)
+
         ws.onopen = () => {
             setSocket(ws);
             const data = JSON.stringify({
@@ -22,6 +24,7 @@ export default function Doc() {
                 roomId
             });
             console.log(data);
+            alert("WebSocket connected");
             ws.send(data)
         }
         
@@ -29,6 +32,7 @@ export default function Doc() {
    
     if (!socket) {
         console.log(socket);
+        // alert("Connecting to WebSocket..." + socket + localStorage.getItem("token"));
         return <Loading/>
     }
 
