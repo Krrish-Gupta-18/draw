@@ -151,7 +151,6 @@ export default class Board {
         this.can.height = window.innerHeight;
         this.roomId = roomId;
         
-        // Bind event handlers once
         this.boundMouseUp = this.mouseUp.bind(this);
         this.boundMouseMove = this.mouseMove.bind(this);
         this.boundMouseDown = this.mouseDown.bind(this);
@@ -325,6 +324,7 @@ export default class Board {
         this.ctx.fillStyle = "rgba(255, 255, 255)";
         this.ctx.fillRect(0, 0, this.can.width, this.can.height);
         const delMap = new Map();
+        let start = 0;
 
         this.ctx.setTransform(
             this.viewportTransform.scale,
@@ -335,16 +335,26 @@ export default class Board {
             this.viewportTransform.y
         )
 
-        for(var i = this.top; i >= 0; i--) {
+        for (let i = this.top; i >= 0; i--) {
             var ele = this.shapes[i];
 
-            if ((!ele?.type) || ele?.isDeleted) continue;
             if(ele.type == "erase") {
                 delMap.set(ele.elementId, true);
             }
+
+            if(ele.type == "delete") {
+                start = i;
+                break;
+            }
+        }
+
+        for(let i = start; i <= this.top; i++) {
+            var ele = this.shapes[i];
+
+            if ((!ele?.type) || ele?.isDeleted) continue;
+            
             if(delMap.has(ele.id)) continue;
 
-            if(ele.type == "delete") break;
             if(this.selected && this.selected.id == ele.id) {
                 this.ctx.strokeStyle = "blue";
                 this.ctx.lineWidth = (ele.strokeWidth || this.lineWidth) + 1;
@@ -437,8 +447,9 @@ export default class Board {
         }
     }
 
-    delete() {
+    delete(sent: boolean = false) {
         this.shapes.splice(++this.top, this.shapes.length - this.top, { id: Date.now(),type: "delete" });
+        if(!sent) this.socket!.send(JSON.stringify({type: "delete", roomId: this.roomId}));
         this.clearCanvas();
     }
 
@@ -507,8 +518,6 @@ export default class Board {
         if (now - this.lastSend < throttle) return;
 
         this.socket.send(JSON.stringify({ type: "mousePos", x, y, color: localStorage.getItem("cursorColor"), roomId: this.roomId }));
-        
-        console.log(`🚀 SEND: (${x.toFixed(1)}, ${y.toFixed(1)}) | Viewport: (${this.viewportTransform.x.toFixed(1)}, ${this.viewportTransform.y.toFixed(1)}, ${this.viewportTransform.scale.toFixed(2)}) | Time: ${now - this.lastSend}`);
         this.lastSend = now;
     }
 
@@ -655,16 +664,15 @@ export default class Board {
                     break;
 
                 case "freehand":
+                    this.ctx.closePath();
                     this.ctx.beginPath();
                     this.ctx.moveTo(this.startX, this.startY);
                     this.ctx.lineTo(x, y);
                     this.ctx.stroke();
                     this.startX = x;
                     this.startY = y;
-                    if(!this.shapes[this.top]) {
-                        this.shapes[this.top] = {id: Date.now(), type: "freehand", points: [{x: this.startX, y: this.startY}], color: this.color};
-                        
-                    } else {
+                    
+                    if(this.shapes[this.top].type == "freehand") {
                         (this.shapes[this.top] as Extract<Shape, {type: "freehand"}>).points.push({x: this.startX, y: this.startY});
                     }
                     this.clearCanvas();
@@ -859,9 +867,10 @@ export default class Board {
         }
 
         if(this.currShape == "freehand") {
-            this.ctx.closePath();
-            this.ctx.beginPath();
+            this.startX = x;
+            this.startY = y;
             this.top++;
+            this.shapes[this.top] = {id: Date.now(), type: "freehand", points: [{x: this.startX, y: this.startY}], color: this.color};
         }
         
         this.startX = x;
@@ -888,6 +897,11 @@ export default class Board {
         if(this.currShape == "erase" && this.eraseShape) {
             this.setDeleteShape(this.eraseShape.id)
             this.eraseShape = null;
+        }
+
+        if (this.currShape === "freehand") {
+            this.socket!.send(JSON.stringify({type: "addShape", shape: this.shapes[this.top], roomId: this.roomId}));
+            this.ctx.closePath();
         }
 
         if (this.isDragging) {
@@ -966,9 +980,10 @@ export default class Board {
                     break;
             }
             if(s && this.currShape != "freehand") {
-                this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId}))
+                this.socket?.send(JSON.stringify({type: "addShape", shape: s, roomId: this.roomId}));
                 this.shapes.splice(++this.top, this.shapes.length - this.top, s);
             }
+
             this.clearCanvas();
             this.isDrawing = false;
         };
