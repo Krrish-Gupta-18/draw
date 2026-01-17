@@ -1,8 +1,12 @@
 {
     "extends": "@repo/typescript-config/base.json",
+    "ts-node": {
+        "esm": true,
+        "experimentalSpecifierResolution": "node"
+    },
     "compilerOptions": {
-        "module": "ESNext",
-        "moduleResolution": "Bundler",
+        "module": "node16",
+        "moduleResolution": "node16",
         "target": "ESNext",
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true,

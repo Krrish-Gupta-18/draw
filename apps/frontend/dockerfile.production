@@ -1,0 +1,7 @@
+ARG NODE_VERSION=24.13.0
+
+FROM node:${NODE_VERSION}-alpine as prepare
+
+WORKDIR app/
+COPY ..
+RUN npx turbo prune frontend --docker

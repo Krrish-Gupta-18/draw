@@ -1,0 +1,54 @@
+# -----------------------------
+# Dependencies (never copy)
+# -----------------------------
+node_modules
+**/node_modules
+
+# -----------------------------
+# Build outputs
+# -----------------------------
+dist
+build
+.next
+out
+coverage
+turbo
+
+# -----------------------------
+# Cache & temp
+# -----------------------------
+.pnpm-store
+.cache
+.eslintcache
+
+# -----------------------------
+# VCS
+# -----------------------------
+.git
+.gitignore
+
+# -----------------------------
+# Environment / secrets
+# -----------------------------
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# Logs
+# -----------------------------
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# -----------------------------
+# OS junk
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Docker files not needed in image
+# -----------------------------
+**/Dockerfile
+**/.dockerignore

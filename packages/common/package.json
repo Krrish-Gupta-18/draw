@@ -2,11 +2,21 @@
   "name": "@repo/common",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "exports": {
-    "./types": "./src/index.ts"
+    "./types": {
+      "require": "./src/index.js",
+      "import": "./src/index.js",
+      "types": "./src/index.d.ts"
+    }
   },
-  "scripts": {},
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "turbo": {
+    "outputs": ["dist/**"]
+  },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*"
   },
