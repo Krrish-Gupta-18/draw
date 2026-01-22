@@ -325,6 +325,7 @@ export default class Board {
         this.ctx.fillStyle = "rgba(255, 255, 255)";
         this.ctx.fillRect(0, 0, this.can.width, this.can.height);
         const delMap = new Map();
+        let start = 0;
 
         this.ctx.setTransform(
             this.viewportTransform.scale,
@@ -335,16 +336,26 @@ export default class Board {
             this.viewportTransform.y
         )
 
-        for(var i = this.top; i >= 0; i--) {
+        for (let i = this.top; i >= 0; i--) {
             var ele = this.shapes[i];
 
-            if ((!ele?.type) || ele?.isDeleted) continue;
             if(ele.type == "erase") {
                 delMap.set(ele.elementId, true);
             }
+
+            if(ele.type == "delete") {
+                start = i;
+                break;
+            }
+        }
+
+        for(let i = start; i <= this.top; i++) {
+            var ele = this.shapes[i];
+
+            if ((!ele?.type) || ele?.isDeleted) continue;
+            
             if(delMap.has(ele.id)) continue;
 
-            if(ele.type == "delete") break;
             if(this.selected && this.selected.id == ele.id) {
                 this.ctx.strokeStyle = "blue";
                 this.ctx.lineWidth = (ele.strokeWidth || this.lineWidth) + 1;

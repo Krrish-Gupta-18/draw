@@ -1,7 +1,44 @@
-ARG NODE_VERSION=24.13.0
+ARG NODE_VERSION=20-alpine
 
-FROM node:${NODE_VERSION}-alpine as prepare
+FROM node:${NODE_VERSION} AS base
 
-WORKDIR app/
-COPY ..
-RUN npx turbo prune frontend --docker
+# RUN apk add --no-cache libc6-compat
+RUN apk update
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+RUN corepack enable
+RUN pnpm add -g turbo@2.5.5
+WORKDIR /app
+
+FROM base as prepare
+COPY . . 
+RUN turbo prune frontend --docker
+
+FROM base AS builder
+COPY --from=prepare /app/out/json/ .
+RUN pnpm install --frozen-lockfile
+
+COPY --from=prepare /app/out/full/ .
+RUN turbo run build --filter=frontend...
+
+# RUN ls -R apps/frontend/.next
+
+FROM base AS runner
+# Don't run production as root for security reasons
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+USER nextjs
+
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/.next/static ./apps/frontend/.next/static
+COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/public ./apps/frontend/public
+
+EXPOSE 4000
+
+CMD node apps/frontend/server.js
+
+# to create image run this command in root folder: sudo docker build -f ./apps/frontend/dockerfile.production -t frontend .

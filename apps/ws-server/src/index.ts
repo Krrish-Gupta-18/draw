@@ -220,7 +220,7 @@ const interval = setInterval(() => {
 
 server.on("upgrade", (request, socket, head) => {
   const origin = request.headers.origin;
-  const allowedOrigins = ["http://localhost:3000", "http://192.168.1.40:3000"];
+  const allowedOrigins = ["http://localhost:3000", "http://192.168.1.40:3000", ];
 
   if (!allowedOrigins.includes(origin || "")) {
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");

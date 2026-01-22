@@ -25,7 +25,11 @@ async function getCursorImage(id: string, color: string) {
     return cursorImages[id];
 }
 
-const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: any, cursors: any }) => {
+const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () => {
+    x: number;
+    y: number;
+    scale: number;
+}, cursors: any }) => {
     const { user } = useAuth();
     const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);

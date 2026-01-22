@@ -13,4 +13,4 @@ app.use("/document", documentRouter);
 
 app.listen(BACKEND_PORT, () => {
     console.log(`Server Started at localhost ${BACKEND_PORT}`);
-})
+});

@@ -5,6 +5,7 @@ import { Nav } from "../components/Nav";
 import Loading from "../components/Loading";
 import { AuthProvider, useAuth } from "./context/useAuth";
 import { log } from "node:console";
+// import { Doc } from "@repo/common/types";
 
 type Doc = {
   id: string;
@@ -173,7 +174,7 @@ function Home() {
       <Nav userName={user.name}/>
       <div className="w-full flex items-center justify-center">
         <div className="w-[90%] flex flex-wrap items-center justify-items-center m-[20px] gap-8">
-            {documents && documents.map((doc: any, i) => {
+            {documents && documents.map((doc: Doc, i) => {
               return (
                 <div key={i} className="relative w-full sm:w-[250px] max-w-2xl p-4 border border-gray-300 rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer" onClick={() => window.location.href = `/document/${doc.id}`}>
                   <label htmlFor="toggle" className="absolute top-2 right-2 cursor-pointer">
@@ -189,7 +190,7 @@ function Home() {
 
                   <h2 className="text-2xl font-bold mb-2">{doc.title}</h2>
                   <p className="text-gray-600">Owner: {doc.owner.name} ({doc.owner.email})</p>
-                  <p className="text-gray-600">Collaborators: {doc.collaborators.map((collab: any) => collab.name).join(", ") || "None"}</p>
+                  <p className="text-gray-600">Collaborators: {doc.collaborators.map((collab: { name: string, email: string }) => collab.name).join(", ") || "None"}</p>
                 </div>
               )
             })}
