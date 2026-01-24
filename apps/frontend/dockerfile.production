@@ -18,9 +18,9 @@ RUN turbo prune frontend --docker
 
 FROM base AS builder
 COPY --from=prepare /app/out/json/ .
-RUN pnpm install --frozen-lockfile
-
 COPY --from=prepare /app/out/full/ .
+RUN pnpm install
+
 RUN turbo run build --filter=frontend...
 
 # RUN ls -R apps/frontend/.next
@@ -37,8 +37,8 @@ COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/.next/static ./apps/frontend/.next/static
 COPY --from=builder --chown=nextjs:nodejs app/apps/frontend/public ./apps/frontend/public
 
-EXPOSE 4000
+EXPOSE 3000
 
-CMD node apps/frontend/server.js
+CMD ["node", "apps/frontend/server.js"]
 
 # to create image run this command in root folder: sudo docker build -f ./apps/frontend/dockerfile.production -t frontend .
