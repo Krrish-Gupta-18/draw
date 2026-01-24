@@ -61,7 +61,6 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
 
-            // Apply current viewport transformation
             ctx.setTransform(
                 currentViewport.scale,
                 0,
@@ -71,7 +70,6 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
                 currentViewport.y
             );
 
-            // Render cursors with current viewport
             Object.keys(cursors).forEach(async (id) => {
                 if (!cursorCanvasRef.current) return;
                 const cursor = cursors[id];
@@ -117,7 +115,7 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
                 document.body.removeChild(cursorCanvas);
             }
         };
-    }, [user, viewportTransform, cursors]); // Added viewportTransform and cursors as dependencies
+    }, [user, viewportTransform, cursors]);
 
     return null;
 };
@@ -143,7 +141,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
         if(!localStorage.getItem('token')) {
             window.location.href = '/log-in';
         }
-        console.log('📡 Fetching elements for room:', roomId);
+
         const fetchData = async () => {
             const elements = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/document/${roomId}`, {
                 method: 'GET',
@@ -166,27 +164,22 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
     
     useEffect(() => {
         if (can.current && socket && roomId && elements !== null) {
-            console.log('🔄 Canvas useEffect triggered - Creating new Board instance');
-            
-            // Cleanup any existing game instance before creating a new one
             if (game.current) {
-                // console.log('🗑️ Destroying existing Board instance');
                 game.current.destroy();
                 game.current = null;
             }
-            
-            // console.log('🆕 Creating new Board instance');
+
             const newGame = new Board(can.current, 1, setZoom, roomId as string, socket, elements);
             
             newGame.setPropertyChangeCallback((shape: Shape | null) => {
                 setSelectedShape(shape);
             });
+
+            
             
             game.current = newGame;
-            // console.log('✅ Board instance created and assigned to ref');
             
             return () => {
-                // console.log('🧹 Canvas cleanup function called');
                 newGame?.destroy();
                 game.current = null;
             }
@@ -223,6 +216,10 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
                 }
             }
 
+            if(data.type == "delete") {
+                game.current?.delete(true);
+            }
+
             if(data.type == "addShape") {
                 game.current?.addShape(data.shape);
             }
@@ -232,7 +229,6 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             }
 
             if(data.type == "erase") {
-                console.log("erase: ", data);
                 game.current?.setDeleteShape(data.elementId, data.id);
             }
         }

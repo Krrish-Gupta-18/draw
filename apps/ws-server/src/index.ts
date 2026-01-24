@@ -113,14 +113,16 @@ wss.on("connection", async (ws, req) => {
                     return;
                 }
                 
+                console.log(!(roomRes.collaborators.some((userAllow: { email: any; }) => userAllow.email === user.email)));
+                
 
-                if(!(roomRes.collaborators.some(userAllow => userAllow.email === user.email)) && roomRes.ownerId != user.id) {
+                if(!(roomRes.collaborators.some((userAllow: { email: any; }) => userAllow.email === user.email)) && roomRes.ownerId != user.id) {
                     ws.send(JSON.stringify({ type: "error", message: "Not allowed in this room" }));
                     console.log(`User ${user.name} not allowed in room ${roomRes.id}`);
                     return;
                 }
 
-                const collaborators = new Set(roomRes.collaborators.map(collab => collab.email));
+                const collaborators = new Set<string>(roomRes.collaborators.map((collab: { email: any; }) => collab.email));
                 collaborators.add((await db.user.findUnique({ where: { id: roomRes?.ownerId } }))?.email!);
 
                 rooms.set(roomRes?.id, {
@@ -174,17 +176,18 @@ wss.on("connection", async (ws, req) => {
         }
 
         if (payloadData.type == "addShape") {
-            console.log(payloadData);
+            broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
+        }
+
+        if (payloadData.type == "delete") {
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
         }
 
         if(payloadData.type == "erase") {
-            console.log("Erase:", payloadData);
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
         }
 
         if (payloadData.type == "updateProperties") {
-            console.log("Property update:", payloadData);
             broadcastToRoom(user.id, JSON.stringify(payloadData), payloadData.roomId);
         }
     })
