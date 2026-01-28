@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: [
     "http://localhost:3000",
-    "http://192.168.1.43:3000"
+    "http://192.168.1.45:3000"
   ],
   eslint: {
     ignoreDuringBuilds: true,

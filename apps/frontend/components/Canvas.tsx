@@ -34,6 +34,8 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
     const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const animationFrameId = useRef<number | null>(null);
     
+    console.log(cursors);
+
     useEffect(() => {
         if (!user) return;
 
@@ -70,7 +72,7 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
                 currentViewport.y
             );
 
-            Object.keys(cursors).forEach(async (id) => {
+            Object.keys(cursors).forEach(async (id) => {    
                 if (!cursorCanvasRef.current) return;
                 const cursor = cursors[id];
                 if (!cursor) return;
@@ -78,6 +80,8 @@ const CursorsLayer = ({ viewportTransform, cursors }: { viewportTransform: () =>
                 ctx.save();
                 try {
                     const img = await getCursorImage(id, cursor.color);
+                    console.log(img, "hello");
+                    
                     ctx.drawImage(img, cursor.x, cursor.y);
                     ctx.font = '12px Arial';
                     ctx.fillStyle = '#000';
@@ -173,9 +177,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             
             newGame.setPropertyChangeCallback((shape: Shape | null) => {
                 setSelectedShape(shape);
-            });
-
-            
+            });            
             
             game.current = newGame;
             
@@ -199,6 +201,8 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
             
             if (data.type === 'mousePos') {
                 dirty = true;
+
+                console.log(cursors.current);
                 
                 cursors.current[data.id] = {
                     x: data.x,
@@ -242,7 +246,7 @@ export default function Canvas({ roomId, socket }: { roomId?: string, socket: We
 
     return (
         <>
-            {game.current && <CursorsLayer viewportTransform={getViewportTransform} cursors={cursors.current!}/>}
+            <CursorsLayer viewportTransform={getViewportTransform} cursors={cursors.current}/>
             {showPropertyPanel && <PropertyPanel 
                 selectedShape={selectedShape} 
                 onPropertyChange={handlePropertyChange}
